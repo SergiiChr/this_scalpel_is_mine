@@ -4,7 +4,8 @@ namespace Scalpel.Tests.Tools;
 /// A tourniquet as a player uses it on an arm: ordered from the nurse and pressed onto the forearm above the hand
 /// stitch laceration, where the trunk lies close beside the arm, it wraps snug around the forearm, leaves the hand and
 /// slows the cut's bleeding. Key frames: review the forearm above the cut bare at first, then the band running around
-/// it there, snug on the skin, neither sunk into the arm nor floating off it, and not around the trunk.
+/// it there, snug on the skin, neither sunk into the arm nor floating off it, and not around the trunk. Pressed over the
+/// thigh's wound it doesn't go on; on the site's edge, clear of the wound, it does.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("tool_tourniquet"), TestCategory("visual_confirmation"), TestCategory("frame_budget")]
@@ -45,6 +46,29 @@ public class TourniquetTest {
         AssertFloat(patient.Vitals.BleedRate)
             .OverrideFailureMessage($"the cut bleeds less with the tourniquet on ({patient.Vitals.BleedRate:0.000} ml/s, "
                 + $"{bleeding:0.000} before)").IsLess(bleeding * 0.5f);
+        await session.Finish(BudgetOverride);
+    }
+
+    /// <summary>Pressed over the wound, the band would lie across the work: it stays in the hand. Pressed further up the
+    /// thigh, on the site's edge clear of the wound, it goes on.</summary>
+    [TestCase]
+    public async Task OverTheWoundItStaysInTheHandClearOfItItGoesOn() {
+        var session = await ToolSession.Start("bullet_muscle", "tourniquet_on_site");
+        var driver = session.Driver;
+        var tourniquet = (await driver.PlayerRequestsItem("tourniquet"))!;
+        // Across the limb from the wound (v runs across the thigh, u along it).
+        var wound = driver.Patient.Wounds[0].Midpoint;
+        var over = driver.SitePoint(new Vector2(wound.X, 0.5f));
+        await driver.PlayerWalksTo(over);
+        await driver.PlayerWorksAt(over, 0, 0.5f);
+        AssertBool(!driver.Patient.TourniquetOn && tourniquet.Band is null && driver.Me.HeldTool(driver.Me.Active) == tourniquet)
+            .OverrideFailureMessage($"pressed over the thigh's wound the tourniquet stays in the hand\n{driver.Recent()}").IsTrue();
+        // Along the limb, at the site's edge furthest from the wound.
+        var edge = driver.SitePoint(new Vector2(wound.X < 0.5f ? 0.95f : 0.05f, 0.5f));
+        await driver.PlayerWalksTo(edge);
+        await driver.PlayerWorksAt(edge, 0, 0.5f);
+        AssertBool(driver.Patient.TourniquetOn && tourniquet.Band is not null)
+            .OverrideFailureMessage($"pressed onto the site's edge clear of the wound the tourniquet goes on\n{driver.Recent()}").IsTrue();
         await session.Finish(BudgetOverride);
     }
 }

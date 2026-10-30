@@ -77,7 +77,7 @@ public class StaplerTest {
         AssertFloat(closedGap)
             .OverrideFailureMessage($"and its edges meet under it ({closedGap * 1000f:0.0} mm, were {gap * 1000f:0.0} mm)")
             .IsLess(gap * 0.5f);
-        AssertFloat(wound.Closure).OverrideFailureMessage("one staple closes a bit of the cut").IsBetween(0.01f, 0.5f);
+        AssertFloat(wound.Closure).OverrideFailureMessage($"one staple closes a bit of the cut ({wound.Closure:0.00})").IsBetween(0.01f, 0.5f);
         var bloodAfter = body.BloodAt(wound.Midpoint);
         AssertFloat(bloodAfter).OverrideFailureMessage(
                 $"the staple squeezes blood aside but leaves a stain on the seam ({bloodAfter:0.00}, was {bloodBefore:0.00})")
@@ -126,9 +126,12 @@ public class StaplerTest {
         await driver.PlayerWalksTo(driver.SitePoint(middle));
         await driver.PlayerTurnsBlade(session.Along.Value);
         await driver.PlayerReaches(driver.SitePoint(middle));
+        var toasts = new List<string>();
+        driver.Surgery.Hud.Toasted += toasts.Add;
         await Click();
+        driver.Surgery.Hud.Toasted -= toasts.Add;
         AssertBool(tissue.MuscleOpenNear(middle, Patient.MuscleReach))
-            .OverrideFailureMessage("the first staple goes into the open muscle").IsFalse();
+            .OverrideFailureMessage($"the first staple goes into the open muscle ({body.DrawnStaples.Count} staples, told: {string.Join(", ", toasts)})").IsFalse();
         AssertFloat(wound.Closure).OverrideFailureMessage("and leaves the skin over it open").IsLess(0.01f);
         var muscleStaple = body.DrawnStaples[0].Path;
         AssertFloat(muscleStaple[1].Y).OverrideFailureMessage("it's drawn down in the muscle, under the skin")
@@ -295,17 +298,20 @@ public class StaplerTest {
 
     /// <summary>Every staple bridges the cut: its legs on both sides of the wound's line, each within the staple's span
     /// of it, square across it, its crown riding on the skin.</summary>
-    private static void AssertStaplesAcross(SurgeryDriver driver, IReadOnlyList<DrawnStaple> staples, Wound wound) {
+    private static void AssertStaplesAcross(SurgeryDriver driver, List<DrawnStaple> staples, Wound wound) {
         var body = driver.Body;
         var def = Db.Tool("skin_stapler")!;
         var widest = def.StapleSpan + (def.StapleGive * 2f);
         var cut = (wound.Points[^1] - wound.Points[0]).Normalized();
-        foreach (var path in staples.Select(staple => staple.Path)) {
+        foreach (var (path, n) in staples.Select((staple, n) => (staple.Path, n))) {
             var a = SiteUv(body, path[1]);
             var b = SiteUv(body, path[^2]);
             var line = wound.ClosestPoint((a + b) * 0.5f);
+            var across = (b - a).Normalized();
             AssertFloat((a - line).Dot(b - a) * (b - line).Dot(b - a))
-                .OverrideFailureMessage("a staple has a leg on each side of the cut").IsLess(0f);
+                .OverrideFailureMessage($"staple {n + 1} of {staples.Count} has a leg on each side of the cut (legs "
+                    + $"{body.UvToMeters((a - line).Dot(across)) * 1000f:0.0} and {body.UvToMeters((b - line).Dot(across)) * 1000f:0.0} mm from its line)")
+                .IsLess(0f);
             AssertFloat(path[1].DistanceTo(path[^2])).OverrideFailureMessage("and is no wider than the stapler reaches")
                 .IsLess(widest * 1.1f);
             AssertFloat(Mathf.Abs((b - a).Orthogonal().Normalized().Dot(cut))).OverrideFailureMessage("lying square across the cut")

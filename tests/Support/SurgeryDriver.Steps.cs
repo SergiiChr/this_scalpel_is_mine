@@ -93,7 +93,11 @@ public partial class SurgeryDriver {
         // Face along the incision and yaw the wrist straight. Rolling a blade almost flat can align its
         // edge with the line while moving its actual skin contact sideways from the buried tip's path.
         var facing = BladeFacing(start, finish, Me.GlobalPosition);
-        await PlayerLooksAt(Me.Camera.GlobalPosition + facing + Vector3.Up * Mathf.Tan(Me.Pitch));
+        // Turned by the direction, not a point by the eyes: leaning in, the eyes move while the body turns.
+        var yaw = Mathf.Atan2(-facing.X, -facing.Z);
+        PlayerInput.Mouse(new Vector2(Mathf.Wrap(Me.Rotation.Y - yaw, -Mathf.Pi, Mathf.Pi) / (Surgeon.LookSensitivity * Settings.MouseSensitivity), 0f));
+        await PlayerInput.Delivered();
+        Note($"faces {facing}");
         await PlayerAimsStraight();
     }
 
@@ -194,7 +198,11 @@ public partial class SurgeryDriver {
         if (await PlayerTakesHoldOf(target)) {
             var forceps = Me.HeldTool(Right)!;
             // A steady pull, a couple of centimeters up a notch at a time, held until it lets go.
-            for (var i = 0; i < 10 && Body.Site.ToLocal(forceps.TipPosition()).Y <= -target.Depth + 0.025f; i++) {
+            bool Low() {
+                var tip = Body.Site.ToLocal(forceps.TipPosition());
+                return tip.Y - Body.SurfaceHeight(Body.LocalToUv(tip)) <= -target.Depth + 0.025f;
+            }
+            for (var i = 0; i < 10 && Low(); i++) {
                 await PlayerPullsANotch();
             }
             await Frames.Until(() => target.Anchor <= 0f, 30f);
@@ -494,15 +502,18 @@ public partial class SurgeryDriver {
         return line;
     }
 
-    /// <summary>A tourniquet pressed onto the limb above the site.</summary>
+    /// <summary>A tourniquet pressed onto the limb above the site: past the site's end toward the trunk, clear of it.
+    /// </summary>
     public async Task PlayerAppliesTourniquet() {
         Note("applies a tourniquet");
         await PlayerRequestsItem("tourniquet");
-        foreach (var v in (float[])[-0.4f, -0.2f, 0f, 1.2f]) {
+        var trunk = Body.FindChildren("*", "", true, false).OfType<BodyPart>().First(part => part.Part == "torso").GlobalPosition;
+        var proximal = SitePoint(new Vector2(1f, 0.5f)).DistanceTo(trunk) < SitePoint(new Vector2(0f, 0.5f)).DistanceTo(trunk);
+        foreach (var past in (float[])[0.2f, 0.35f, 0.5f]) {
             if (Patient.TourniquetOn) {
                 break;
             }
-            var spot = SitePoint(new Vector2(0.5f, v));
+            var spot = SitePoint(new Vector2(proximal ? 1f + past : -past, 0.5f));
             await PlayerWalksTo(spot);
             await PlayerWorksAt(spot, 0, 0.5f);
         }
@@ -618,6 +629,13 @@ public partial class SurgeryDriver {
             Note($"fragment {i} off by {target.Uv.DistanceTo(target.RestUv):0.000}");
         }
         await Frames.Seconds(time + 1f);
+        // Both let go before either is taken to the tray: walking off holding one would tear the tissue.
+        foreach (var hand in (int[])[Left, Right]) {
+            await SwitchTo(hand);
+            if (Me.HeldTool(hand) is { } held) {
+                await PlayerLetsGoOfHold(held);
+            }
+        }
         foreach (var hand in (int[])[Left, Right]) {
             await SwitchTo(hand);
             await PlayerPutsDown();

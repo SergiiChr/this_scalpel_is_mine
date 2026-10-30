@@ -93,7 +93,9 @@ public partial class Patient {
         var wound = NearestWound(mid, 0.04f, false);
         if (snapped.Kind == SpringKind.Stitch) {
             if (wound is not null) {
-                wound.Bins[wound.BinAt(mid)] = 0.3f;
+                // Torn through, it holds the cut at most a little: a bin already open stays open.
+                var bin = wound.BinAt(mid);
+                wound.Bins[bin] = Mathf.Min(wound.Bins[bin], 0.3f);
                 Paint(WoundMap.Layer.Wounds, WoundMap.Stitch, mid, mid, 0.008f, 0f, WoundMap.Mode.Min);
             }
             Session.Scoring.Add("suture_tear_through");

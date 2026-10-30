@@ -65,6 +65,12 @@ public sealed class ClampAction : ToolAction {
             var tip = step.Tip;
             if (hold is SkinHold && step.Surgery.Surgeons.TryGetValue(step.Hand.Peer, out var surgeon)) {
                 var hand = surgeon.Hands[tool.Slot];
+                // Dragged out of reach by the surgeon walking off, the hand doesn't draw the skin after it: the skin
+                // stays where it was held until the host settles it (Surgery.Overstretched(): a self-retaining tool is
+                // left in place, forceps tear it). Dragged along, it would be pulled back over the cut first.
+                if (hand.Target.DistanceTo(surgeon.Shoulder(tool.Slot)) > Surgeon.Overreach) {
+                    return;
+                }
                 tip = hand.EffectivePosition() + hand.TipOffset(tool.Def.Length);
             }
             tool.Hold = patient.UpdateGrip(tool.Uid, hold, tip, power, step.Dt, step.Hand.Speed, out var heldAt);

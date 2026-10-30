@@ -11,9 +11,10 @@ public abstract record ToolHold;
 /// A hook (the retractor) pulls the skin aside or up, never down into the opening. A piece of skin cut out all round
 /// comes off when lifted. <paramref name="Hold"/>: where a self-retaining tool set down keeps it (site space).
 /// <paramref name="Offset"/>: the rendered contact relative to its held simulation particle, retained while pulling.
-/// <paramref name="Origin"/>: the physical contact when the tool took hold, in site space.</summary>
+/// <paramref name="Origin"/>: the physical contact when the tool took hold, in site space. <paramref name="Clamps"/>:
+/// the jaws closed on the bleeding edge from inside the opening, clamping the wound while they hold.</summary>
 public sealed record SkinHold(int Wound, Vector2 Anchor, bool Hook, bool Piece = false, Vector3? Hold = null,
-    Vector3 Offset = default, Vector3? Origin = null) : ToolHold;
+    Vector3 Offset = default, Vector3? Origin = null, bool Clamps = false) : ToolHold;
 
 /// <summary>A cavity target (by index) taken hold of while still attached, at <paramref name="StartDepth"/>.
 /// <paramref name="Offset"/>: where the target is from the tip across the skin (site space), so glass taken by its end
@@ -24,7 +25,7 @@ public sealed record TargetHold(int Target, float StartDepth, Vector3 Offset = d
 /// space).</summary>
 public sealed record CarryHold(int Target, Vector3 Offset = default) : ToolHold;
 
-/// <summary>A bleeding vessel (internal wound by id) clamped shut.</summary>
+/// <summary>A bleeding vessel (internal wound by id), or a wound's edge deep in the opening, clamped shut.</summary>
 public sealed record VesselHold(int Wound) : ToolHold;
 
 /// <summary>An organ (by index) held aside, the tip <paramref name="Offset"/> (site space) from where it holds it.

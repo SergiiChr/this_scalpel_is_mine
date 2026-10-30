@@ -22,6 +22,8 @@ public class SurgeonMovementTest {
         FrameBudget.RenderingOff();
         var driver = _driver = SurgeryDriver.Create();
         await driver.Start(scenario);
+        // The view standing and zooming in are what these cases look at.
+        driver.ZoomsInToWork = false;
         var frames = _frames = new KeyFrames();
         driver.AddChild(frames);
         frames.Begin(driver.Surgery, "surgeon_movement");

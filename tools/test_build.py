@@ -13,7 +13,7 @@ import unittest
 import xml.etree.ElementTree as ElementTree
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import build
 
@@ -104,10 +104,15 @@ class CoverageReportingTest(unittest.TestCase):
         report.write_text(xml)
         return build.problems(log, report, status, 60)
 
+    def run_suite(self) -> build.Outcome:
+        """The outcome of running the example suite alone."""
+        with contextlib.redirect_stdout(io.StringIO()):
+            return list(build.run_suites([self.suite], self.options))[-1]
+
     def test_broken_only_suite_writes_skipped_report_without_launching(self) -> None:
         self.suite.cases = [build.Case("Broken", ["broken"], "BROKEN: example", [])]
         with patch.object(build, "run_process") as process:
-            outcome = build.run_suite(self.suite, self.options)
+            outcome = self.run_suite()
         process.assert_not_called()
         self.assertTrue(build.report(outcome).startswith("skip "))
         xml = ElementTree.parse(self.root / "test-results" / "Example.xml")
@@ -132,7 +137,7 @@ class CoverageReportingTest(unittest.TestCase):
         )
 
     def test_empty_suite_is_skipped(self) -> None:
-        self.assertTrue(build.report(build.run_suite(self.suite, self.options)).startswith("skip "))
+        self.assertTrue(build.report(self.run_suite()).startswith("skip "))
 
     def test_all_runtime_skips_fail_when_runnable_cases_were_selected(self) -> None:
         result = self.result("<testsuite><testcase><skipped /></testcase></testsuite>")
@@ -158,18 +163,53 @@ class CoverageReportingTest(unittest.TestCase):
         self.assertEqual(result.executed, 1)
         self.assertIn("gap missing", result.failures[0])
 
-    def test_only_cases_that_just_ran_over_time_are_kept_from_a_retry(self) -> None:
-        result = self.result(
-            '<testsuite><testcase classname="S" name="Slow" time="62" /><testcase classname="S" name="Cut" time="70">'
-            '<failure message="gap missing" /></testcase><testcase classname="S" name="Hung" time="61">'
-            '<failure message="The execution has timed out after 60s." /></testcase></testsuite>'
-        )
-        self.assertEqual(result.failed_cases.keys(), {("S", "Slow"), ("S", "Cut"), ("S", "Hung")})
-        self.assertEqual(result.overran, {("S", "Slow"): ["[ERROR] S Slow took 62 s, longer than 60 s."]})
+    def test_a_resume_runs_everything_after_key_frames_were_taken_with_other_options(self) -> None:
+        self.suite.cases = [build.Case("Runs", [], "", [])]
+        later = build.Suite(Path("LaterTest.cs"), "Scalpel.Tests.Later", [], [], False, [build.Case("Fails", [], "", [])])
+        failed = self.result('<testsuite><testcase classname="S" name="Fails"><failure message="gap missing" /></testcase></testsuite>')
+        with patch.object(build, "setup"), patch.object(build, "discover", return_value=[self.suite, later]):
+            with patch.object(build, "LAST_RUN", self.root / "last-run.json"), patch.object(build, "KEY_FRAMES", self.root / "shots"):
+                with contextlib.redirect_stdout(io.StringIO()):
+                    with patch.object(build, "run_process", side_effect=[self.passed, failed]):
+                        build.test(["--all", "--jobs", "1", "--with-key-frames"])
+                    with patch.object(build, "run_process", return_value=self.passed):
+                        build.test(["--all", "--jobs", "1", "--with-key-frames", "--case", "Fails"])
+                    with patch.object(build, "run_process", return_value=self.passed) as process:
+                        build.test(["--all", "--jobs", "1", "--with-key-frames", "--resume"])
+        # The check on the failed suite alone cleared the regression's key frames: both suites run again.
+        self.assertEqual(process.call_count, 2)
 
-    def test_a_lone_case_over_time_is_retried_on_errors_outside_it(self) -> None:
-        result = self.result('<testsuite><testcase classname="S" name="Slow" time="62" /></testsuite>', QUIT + "\nERROR: at shutdown")
-        self.assertEqual(result.overran, {})
+    def test_a_case_over_its_time_limit_fails(self) -> None:
+        result = self.result('<testsuite><testcase classname="S" name="Slow" time="62" /></testsuite>')
+        self.assertEqual(result.failures, ["[ERROR] S Slow took 62 s, longer than 60 s."])
+
+    def test_the_run_goes_on_past_a_failed_suite(self) -> None:
+        self.suite.cases = [build.Case("Fails", [], "", [])]
+        later = build.Suite(Path("LaterTest.cs"), "Scalpel.Tests.Later", [], [], False, [build.Case("Runs", [], "", [])])
+        failed = self.result('<testsuite><testcase classname="S" name="Fails"><failure message="gap missing" /></testcase></testsuite>')
+        with patch.object(build, "setup"), patch.object(build, "discover", return_value=[self.suite, later]):
+            with patch.object(build, "run_process", side_effect=[failed, self.passed]) as process:
+                with contextlib.redirect_stdout(io.StringIO()) as output:
+                    status = build.test(["--all", "--jobs", "1"])
+        self.assertEqual(status, 1)
+        self.assertEqual(process.call_count, 2)
+        self.assertIn("1 passed, 1 failed, 0 skipped, 0 pending", output.getvalue())
+
+    def test_a_resumed_run_leaves_out_what_passed_last_time(self) -> None:
+        self.suite.cases = [build.Case("Runs", [], "", [])]
+        later = build.Suite(Path("LaterTest.cs"), "Scalpel.Tests.Later", [], [], False, [build.Case("Fails", [], "", [])])
+        failed = self.result('<testsuite><testcase classname="S" name="Fails"><failure message="gap missing" /></testcase></testsuite>')
+        with patch.object(build, "setup"), patch.object(build, "discover", return_value=[self.suite, later]):
+            with patch.object(build, "LAST_RUN", self.root / "last-run.json"), contextlib.redirect_stdout(io.StringIO()) as output:
+                with patch.object(build, "run_process", side_effect=[self.passed, failed]):
+                    self.assertEqual(build.test(["--all", "--jobs", "1"]), 1)
+                with patch.object(build, "run_process", return_value=self.passed) as process:
+                    self.assertEqual(build.test(["--all", "--jobs", "1", "--resume"]), 0)
+                    self.assertEqual(build.test(["--all", "--jobs", "1", "--resume"]), 0)
+        # Only the suite that failed ran again; then nothing was left.
+        self.assertEqual(process.call_count, 1)
+        self.assertIn("1 passed, 0 failed, 0 skipped, 0 pending, 1 passed in the last run", output.getvalue())
+        self.assertIn("Every suite passed in the last run (2).", output.getvalue())
 
     def test_passing_cases_fail_when_godot_never_quits(self) -> None:
         result = self.result("<testsuite><testcase /></testsuite>", "Rebuild Godot Project ends with exit code: 0", 1)
@@ -184,7 +224,7 @@ class CoverageReportingTest(unittest.TestCase):
         self.suite.cases = [build.Case("Ignored", [], "", ['"a"', '"b"'])]
         results = [self.result("<testsuite><testcase /></testsuite>"), self.result("<testsuite />")]
         with patch.object(build, "run_process", side_effect=results) as process:
-            outcome = build.run_suite(self.suite, self.options)
+            outcome = self.run_suite()
         self.assertEqual(process.call_count, 2)
         self.assertEqual(outcome.executed, 1)
         self.assertTrue(build.report(outcome).startswith("FAIL "))
@@ -261,7 +301,10 @@ class CoverageReportingTest(unittest.TestCase):
         budgets = []
         with patch.object(build, "setup"), patch.object(build, "discover", return_value=[self.suite]):
             for arguments in (["--all"], [], ["--tag", "smoke"], ["--case", "Runs"], ["--case", "Runs", "--ci-run"]):
-                with patch.object(build, "run_suites", return_value=iter([])) as run_suites, contextlib.redirect_stdout(io.StringIO()):
+                with (
+                    patch.object(build, "run_suites", return_value=iter([])) as run_suites,
+                    contextlib.redirect_stdout(io.StringIO()),
+                ):
                     with contextlib.redirect_stderr(io.StringIO()):
                         build.test(arguments)
                 budgets.append(run_suites.call_args.args[1].budget)
@@ -277,10 +320,13 @@ class CoverageReportingTest(unittest.TestCase):
         self.assertEqual(build.frame_budget(self.suite, local), "off")
         self.assertFalse(build.runs_alone(self.suite, local))
 
-    def test_key_frame_takers_run_alone(self) -> None:
+    def test_network_suites_run_alone(self) -> None:
+        self.suite.categories = ["network"]
+        self.assertTrue(build.runs_alone(self.suite, self.options))
+
+    def test_key_frame_takers_share_the_machine(self) -> None:
         self.suite.categories = ["visual_confirmation"]
-        self.assertFalse(build.runs_alone(self.suite, self.options))
-        self.assertTrue(build.runs_alone(self.suite, dataclasses.replace(self.options, key_frames=True)))
+        self.assertFalse(build.runs_alone(self.suite, dataclasses.replace(self.options, key_frames=True)))
 
     def test_capacity_is_one_process_per_core_within_memory(self) -> None:
         with patch.object(os, "sched_getaffinity", return_value=set(range(8))), patch.object(os, "sysconf", side_effect=[3 << 30, 1]):
@@ -365,13 +411,24 @@ class CoverageReportingTest(unittest.TestCase):
         settings = (self.root / "test-settings" / "Example.runsettings").read_text()
         self.assertIn("--headless", settings)
 
-    def test_key_frames_use_the_virtual_display_even_with_a_real_one(self) -> None:
+    def key_frame_process(self, display: bool) -> MagicMock:
+        """The command and environment of a process taking key frames, on a machine with a display or without."""
         self.suite.categories = ["visual_confirmation"]
         self.options.key_frames = True
-        with patch.dict(os.environ, {"DISPLAY": ":0"}), patch.object(build, "dotnet", return_value="dotnet"):
+        with patch.object(build, "has_display", return_value=display), patch.object(build, "dotnet", return_value="dotnet"):
             with patch("build.subprocess.run", return_value=subprocess.CompletedProcess([], 0)) as process:
                 with patch.object(build, "problems", return_value=build.ProcessResult([], 1)), patch("build.shutil.which", return_value="xvfb-run"):
                     build.run_process(self.suite, self.options, "Example", "filter", 1)
+        return process
+
+    def test_key_frames_are_drawn_by_the_gpu_on_the_display(self) -> None:
+        process = self.key_frame_process(display=True)
+        self.assertEqual(process.call_args.args[0][:3], [str(build.GPU_DISPLAY), "1920x1080", "dotnet"])
+        self.assertEqual(process.call_args.kwargs["env"]["__NV_PRIME_RENDER_OFFLOAD"], "1")
+        self.assertNotIn("LIBGL_ALWAYS_SOFTWARE", process.call_args.kwargs["env"])
+
+    def test_key_frames_fall_back_to_a_virtual_display_without_one(self) -> None:
+        process = self.key_frame_process(display=False)
         self.assertEqual(process.call_args.args[0][0], "xvfb-run")
         self.assertEqual(process.call_args.kwargs["env"]["LIBGL_ALWAYS_SOFTWARE"], "1")
 

@@ -43,6 +43,26 @@ public class ForcepsTest {
         await session.Finish(BudgetOverride);
     }
 
+    /// <summary>A hemostat locked on the opened thigh wound stops its bleeding. Forceps taking the skin beside it and
+    /// letting go leave it clamped: only the tool clamping a wound lets it bleed again.</summary>
+    [TestCase]
+    public async Task ForcepsLettingGoOfTheSkinLeaveAHemostatsClampOn() {
+        var (session, _) = await OpenOverBullet("forceps/clamped");
+        var driver = session.Driver;
+        var cut = driver.Patient.Wounds.Where(wound => wound.MadeBySurgeon).MaxBy(wound => wound.LengthUv)!;
+        await driver.PlayerClampsBleeder(cut);
+        AssertFloat(cut.Clamped).OverrideFailureMessage("the hemostat clamps the opened wound").IsGreaterEqual(0.8f);
+        var forceps = (await driver.PlayerRequestsItem("forceps"))!;
+        var edge = driver.SitePoint(SkinBeside(driver, cut.Midpoint));
+        await driver.PlayerWalksTo(edge);
+        await driver.PlayerReaches(edge);
+        await Press(driver);
+        AssertBool(forceps.Hold is SkinHold).OverrideFailureMessage($"the forceps take the skin beside it: {forceps.Hold}").IsTrue();
+        await LetGo(driver, forceps);
+        AssertFloat(cut.Clamped).OverrideFailureMessage("letting go of the skin leaves the hemostat's clamp on").IsGreaterEqual(0.8f);
+        await session.Finish(BudgetOverride);
+    }
+
     [TestCase]
     public async Task ForcepsHeldUpInTheOpeningCloseWhereTheTipIs() {
         var (session, bullet) = await OpenOverBullet("forceps/depth");
@@ -72,12 +92,9 @@ public class ForcepsTest {
         AssertBool(hud.DepthShown && hud.AimText.Contains("Tip depth") && hud.AimText.Contains("held by the wheel"))
             .OverrideFailureMessage($"the aim shows the stem down to the tip and the depth beside it: {hud.AimText}").IsTrue();
         // Zoomed in, so the stem shows.
-        PlayerInput.Tap(InputActions.Zoom);
-        await Frames.Seconds(0.5f);
+        await driver.PlayerZoomsIn();
         await session.CaptureView("held_up_view",
             "zoomed in over the opening, the aim's stem from its lip down to the forceps' tip, \"Tip depth\" and \"held by the wheel\" beside it");
-        PlayerInput.Tap(InputActions.Zoom);
-        await Frames.Seconds(0.5f);
 
         // Pressed there, the jaws close where the tip is: on nothing, the tip staying put.
         await Press(driver);

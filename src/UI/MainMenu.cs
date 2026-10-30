@@ -81,7 +81,7 @@ public partial class MainMenu : Control {
         var list = Ui.VBox(4);
         var details = Ui.VBox(12);
         details.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-        foreach (var scenario in Db.Scenarios) {
+        foreach (var scenario in Db.Offered) {
             var best = Progress.BestStars.GetValueOrDefault(scenario.Id);
             var title = IsSecret(scenario) ? "???" : scenario.Title;
             var result = best > 0 ? "   best " + new string('★', best) : "";

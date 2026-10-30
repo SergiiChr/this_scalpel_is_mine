@@ -30,6 +30,10 @@ public struct Spring {
     public bool MuscleClosed { get; set; }
     /// <summary>The subcutaneous layer has been closed: the same cut then counts as skin-only.</summary>
     public bool FatClosed { get; set; }
+    /// <summary>A stitch in a layer under the skin: it draws its ends together along the body only. The sheet's
+    /// particles are the skin's, and a lip peeled up off the muscle would otherwise drag the other lip's skin up after
+    /// it into a spike.</summary>
+    public bool Flat { get; set; }
 }
 
 /// <summary>A tool holding the skin: the particle it pins and where it pulls it (site-local).</summary>
@@ -102,15 +106,17 @@ public sealed partial class TissueSim {
     public const float Anchor = 0.02f;
     /// <summary>Skin pulled this far (meters) from its spot isn't held there any more, see Substep().</summary>
     public const float AnchorReach = 0.05f;
+    /// <summary>The farthest (meters) a grip draws its skin in a solver step.</summary>
+    private const float GripStep = 0.001f;
     /// <summary>A cut's edge lifted this far (meters) off its spot isn't drawn back from the cut any more.</summary>
     public const float LiftedOff = 0.005f;
     /// <summary>How far each edge of a cut is drawn back from it (meters) by cut depth (none, skin, fat, muscle), and
     /// how firmly. Skin gapes a little under its own tension, cut fat bulges apart, cut muscle retracts hard. The pull
     /// fades out over RetractSpread (meters) from the cut, so the stretch is shared by the skin around it, and over
     /// RetractTaper (meters) toward the cut's ends, where it stays closed: the cut opens like a lens.</summary>
-    public static readonly float[] Retract = [0f, 0.0022f, 0.0035f, 0.015f];
+    public static readonly float[] Retract = [0f, 0.004f, 0.0063f, 0.0105f];
     public static readonly float[] RetractSpread = [0f, 0.03f, 0.045f, 0.04f];
-    public static readonly float[] RetractTaper = [0f, 0.008f, 0.012f, 0.03f];
+    public static readonly float[] RetractTaper = [0f, 0.004f, 0.006f, 0.02f];
     public const float GapePull = 0.03f;
     public const float MusclePull = 0.05f;
     public const float LooseAnchor = 0.006f;
@@ -136,6 +142,9 @@ public sealed partial class TissueSim {
     /// <summary>Skin bunches up to this share of its length, pushed along, before it holds the hand like
     /// <see cref="GripStrain"/> does: it piles up in front of the jaws, it doesn't pass through itself.</summary>
     public const float GripBunch = 1.6f;
+    /// <summary>The least a spring's reach along the body comes to, as a share of its rest reach, before a grip's patch
+    /// counts as folding the skin over itself (StrainAt()): 0.4 lets it tilt up to about 66 degrees.</summary>
+    internal const float UprightShare = 0.4f;
     /// <summary>Skin under the drape stays at least this far (meters) below the height folded-out skin lies at on top
     /// of it.</summary>
     public const float UnderDrape = 0.006f;
@@ -155,6 +164,9 @@ public sealed partial class TissueSim {
     /// and less of each move away from where it belongs, down to <see cref="LeastGive"/> (see <see cref="Restrain"/>).
     /// </summary>
     private const float FirmStrain = 1.15f;
+    /// <summary>How far toward tearing (share of the stretch past rest) skin another grip answers for may be stretched
+    /// before it stops a hand too (see <see cref="Owns"/>).</summary>
+    private const float SharedTear = 0.6f;
     /// <summary>The share of a move away from where the held skin belongs that it still gives just short of
     /// <see cref="GripStrain"/>.</summary>
     private const float LeastGive = 0.2f;
@@ -169,10 +181,13 @@ public sealed partial class TissueSim {
     /// <summary>Extra solver passes over the stitches each iteration. Thread is far stiffer than skin: solved as often
     /// as the skin, a stitch would give way to the stretched skin around it and the edges would never meet.</summary>
     public const int StitchPasses = 3;
-    /// <summary>Global intact-tissue elasticity, independent of suture tear-through (ThreadTear). A gentle 5 cm pull
-    /// stretches intact skin; the hard 8 cm pull still tears it. Scalpel cuts sever springs directly, without this
-    /// threshold.</summary>
+    /// <summary>Global intact-tissue elasticity, independent of suture tear-through (ThreadTear). Scalpel cuts sever
+    /// springs directly, without this threshold.</summary>
     public const float TissueBreak = 3f;
+    /// <summary>How far (meters, along the body) a grip drags its skin from where it lies before the skin tears there:
+    /// a gentle 5 cm pull stretches it, a hard 8 cm one tears it. Dragged along, the skin slides on its bed rather than
+    /// stretching to <see cref="TissueBreak"/>.</summary>
+    public const float TearReach = 0.065f;
     /// <summary>One stitch pulls together every cut spring this close to it (meters, at rest): a stitch closes a few
     /// millimeters of the cut, however fine the grid.</summary>
     public const float StitchReach = 0.005f;
@@ -226,13 +241,7 @@ public sealed partial class TissueSim {
     /// is as still as skin that doesn't move.</summary>
     private Vector3[] _before = [];
     private float[] _anchor = [];
-    private readonly Dictionary<Vector3I, List<int>> _foldNeighbors = [];
-    private readonly List<List<int>> _usedFoldBuckets = [];
-    private Vector3[] _bend = [];
-    private readonly List<int> _foldCells = [];
-    private bool[] _foldCellMarks = [];
     private readonly FoldState _fold = new();
-    internal bool FoldContact(int k) => k < _fold.Contact.Length && _fold.Contact[k];
     internal bool HasFoldFootprint => _fold.Roots.Count > 0;
     internal bool NearFold(int k) => k < _fold.Near.Length && _fold.Near[k] > 0f;
     internal bool HoldingFold => _fold.Active && !_fold.TurnedOver;
@@ -295,12 +304,17 @@ public sealed partial class TissueSim {
     private sealed class Pin(int particle, Vector3 target) {
         public int Particle { get; } = particle;
         public Vector3 Target { get; set; } = target;
+        /// <summary>Where the grip has drawn its skin to this step: on its way to Target, never further in a step than
+        /// the skin follows (see <see cref="GripStep"/>).</summary>
+        public Vector3 Drawn { get; set; } = target;
         /// <summary>The skin's position when this grip took hold. Planar resistance and reversal share that origin,
         /// just as the strain is measured from acquisition, rather than an anchor displaced by the wound's gape.</summary>
         public Vector3 Origin { get; init; } = target;
         /// <summary>Once an outward pull starts peeling, a relaxed solver step must not interrupt the lift.
         /// Moving inward releases that resistance.</summary>
         public bool Peeling { get; set; }
+        /// <summary>The farthest (meters, along the body) the grip has drawn its skin from where it took hold.</summary>
+        public float Farthest { get; set; }
         /// <summary>How long each spring of the patch was when the grip took hold (see
         /// <see cref="StrainAt"/>), and the topology that patch was made for.</summary>
         public float[]? Unpulled { get; set; }
@@ -314,9 +328,17 @@ public sealed partial class TissueSim {
         public Vector3[]? Base { get; set; }
         public Vector3 BaseAt { get; set; }
         public int BaseFor { get; set; } = -1;
+        /// <summary>Where DragPatch() last drew each of the patch's particles (<see cref="GoalOf"/>).</summary>
+        public Vector3[] Goal { get; set; } = [];
+        public int[] GoalOf { get; set; } = [];
         /// <summary>The solver step the grip took hold at: its hold settles the skin in the jaws over the next step
         /// (Hold()), and the springs are measured from after that.</summary>
         public int HeldAt { get; init; }
+        /// <summary>Whether the skin tore at the grip since it was last drawn back within TearReach.</summary>
+        public bool Tore { get; set; }
+        /// <summary>The highest (meters) the grip has lifted its skin off its bed: a flap lifted and turned back comes
+        /// away from its bed rather than tearing.</summary>
+        public float Raised { get; set; }
     }
 
     /// <summary>The skin a grip on a particle drags along: the particles, how strongly each, and the ones it holds.
@@ -1024,9 +1046,23 @@ public sealed partial class TissueSim {
         return piece.Count;
     }
 
-    /// <summary>Pins the particle nearest uv to follow a tool.</summary>
+    /// <summary>Pins the particle nearest uv to follow a tool, on uv's side of any cut: a cut running between two rows
+    /// of the grid leaves the nearest one with the other lip.</summary>
     public void Grip(int key, Vector2 uv) {
         var k = Nearest(uv);
+        if (AcrossCut(uv, UvOf(k))) {
+            var at = CellOf(k);
+            var best = float.PositiveInfinity;
+            for (var j = Math.Max(at.Y - 1, 1); j <= Math.Min(at.Y + 1, ResY - 1); j++) {
+                for (var i = Math.Max(at.X - 1, 1); i <= Math.Min(at.X + 1, ResX - 1); i++) {
+                    var near = Index(i, j);
+                    if (!Excised[near] && UvOf(near).DistanceTo(uv) < best && !AcrossCut(uv, UvOf(near))) {
+                        best = UvOf(near).DistanceTo(uv);
+                        k = near;
+                    }
+                }
+            }
+        }
         _pins[key] = new Pin(k, Pos[k]) { HeldAt = StepsDone };
         _winDirty = true;
         Wake();
@@ -1085,6 +1121,8 @@ public sealed partial class TissueSim {
             }
         }
         var worst = 1f;
+        // Skin another grip holds nearer reads at GripStrain only once it's stretched SharedTear of the way to tearing.
+        var shared = (GripStrain - 1f) / ((TissueBreak - 1f) * BreakMult * SharedTear);
         for (var n = 0; n < patch.Springs.Length; n++) {
             ref readonly var spring = ref _springs[patch.Springs[n]];
             if (!spring.Active || pin.Unpulled[n] <= 0.00001f) {
@@ -1095,17 +1133,23 @@ public sealed partial class TissueSim {
             // the grip counts as stretching or bunching it. Bunched up reads on the same scale as stretched: at the
             // limit either way it reads GripStrain.
             var length = Pos[spring.B].DistanceTo(Pos[spring.A]);
-            worst = Mathf.Max(worst, length / Mathf.Max(pin.Unpulled[n], spring.Rest));
-            worst = Mathf.Max(worst, GripStrain * Mathf.Min(pin.Unpulled[n], spring.Rest) / (GripBunch * Mathf.Max(length, 0.0001f)));
+            var stretch = length / Mathf.Max(pin.Unpulled[n], spring.Rest);
+            if (Owns(pin, patch.Springs[n])) {
+                worst = Mathf.Max(worst, stretch);
+                worst = Mathf.Max(worst, GripStrain * Mathf.Min(pin.Unpulled[n], spring.Rest) / (GripBunch * Mathf.Max(length, 0.0001f)));
+            } else {
+                worst = Mathf.Max(worst, 1f + ((stretch - 1f) * shared));
+            }
         }
         // Bunching counts over the grip's whole footprint: skin pushed along piles up where it meets skin that
         // stays put, at the drape's rim, rows ahead of the jaws, and the hand stops when that pile can't take more.
         // Nor may the patch fold the skin over itself: a spring whose reach along the body has shrunk to
-        // UprightShare of its rest reach (KeepUpright()) is at the limit, one row passing the next is over it.
+        // UprightShare of its rest reach is at the limit, one row passing the next is over it.
         foreach (var s in patch.Springs) {
             ref readonly var spring = ref _springs[s];
             var unpulled = pin.UnpulledAll[s];
-            if (!spring.Active || spring.Kind != SpringKind.Tissue || unpulled <= 0.00001f || !NearFold(spring.A) || !NearFold(spring.B)) {
+            if (!spring.Active || spring.Kind != SpringKind.Tissue || unpulled <= 0.00001f || !NearFold(spring.A) || !NearFold(spring.B)
+                || !Owns(pin, s)) {
                 continue;
             }
             var length = Pos[spring.B].DistanceTo(Pos[spring.A]);
@@ -1116,6 +1160,26 @@ public sealed partial class TissueSim {
             worst = Mathf.Max(worst, GripStrain * least / Mathf.Max(Along(s), 0.0001f));
         }
         return worst;
+    }
+
+    /// <summary>
+    /// Whether skin spring <paramref name="s"/> is <paramref name="pin"/>'s to answer for: no other grip holds skin
+    /// nearer to it. Two tools drawing a cut's lips apart each reach round its ends into the other's skin. The lip one
+    /// of them pulls stretches and folds up there, and that mustn't stop the other hand; the stretch is still felt, more
+    /// softly (<see cref="SharedTear"/>), so two hands can't tear the cut's ends between them.
+    /// </summary>
+    private bool Owns(Pin pin, int s) {
+        if (_pins.Count < 2) {
+            return true;
+        }
+        var middle = (Rest[_springs[s].A] + Rest[_springs[s].B]) * 0.5f;
+        var own = Rest[pin.Particle].DistanceSquaredTo(middle);
+        foreach (var other in _pins.Values) {
+            if (other != pin && Rest[other.Particle].DistanceSquaredTo(middle) < own) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /// <summary>The height of the sheet as it settled (its own rest surface, on the body) under site point x, z, or
@@ -1136,13 +1200,18 @@ public sealed partial class TissueSim {
         return Mathf.Lerp(top, bottom, v - j);
     }
 
-    /// <summary>Spring s's reach along the body (its rest direction in the site plane), as a share of its rest
-    /// reach: 1 as it lay at rest, 0 standing on end, negative folded back over.</summary>
+    /// <summary>Spring s's reach along the body, as a share of its rest reach: 1 as it lay at rest, 0 standing on end,
+    /// negative folded back over. The more of two readings: along its rest direction, sloping with a limb's side (in the
+    /// site plane, skin drawn down the side would read as standing up as it follows the slope), and in the site plane
+    /// (along the sloping rest direction, skin drawn over a shoulder's round would read as standing up as it turns).
+    /// </summary>
     private float Along(int s) {
         ref readonly var spring = ref _springs[s];
-        var restWay = new Vector2(Rest[spring.B].X - Rest[spring.A].X, Rest[spring.B].Z - Rest[spring.A].Z);
+        var restWay = Rest[spring.B] - Rest[spring.A];
         var d = Pos[spring.B] - Pos[spring.A];
-        return new Vector2(d.X, d.Z).Dot(restWay) / restWay.LengthSquared();
+        var flatWay = new Vector2(restWay.X, restWay.Z);
+        return Mathf.Max(d.Dot(restWay) / restWay.LengthSquared(),
+            new Vector2(d.X, d.Z).Dot(flatWay) / flatWay.LengthSquared());
     }
 
     /// <summary>
@@ -1164,10 +1233,21 @@ public sealed partial class TissueSim {
         var home = pin.Origin with { Y = _anchorTarget[pin.Particle].Y };
         var now = pin.Target;
         var nowAlong = (now - home).Slide(Vector3.Up);
-        var away = nowAlong.Normalized();
         var move = (target - now).Slide(Vector3.Up);
+        // Still where it took hold, a grip on skin already firm (the other lip drawn back by another hand) has no way
+        // out yet: the move itself is its way out, or it could never take a first step.
+        var away = nowAlong.IsZeroApprox() ? move.Normalized() : nowAlong.Normalized();
+        pin.Farthest = Mathf.Max(pin.Farthest, nowAlong.Length());
         if (move.Dot(away) < -0.000001f) {
             pin.Peeling = false;
+            if (pin.Farthest > 0f) {
+                // Drawn back toward its spot, an edge lifted on the way out comes down with it, all the way there. The
+                // hand it lifted stays up otherwise, and the edge held up there reads as strained, so the next pull out
+                // is held back at once. Only by how far back it's come from the farthest it got: a hand wavering at
+                // the limit leaves the edge peeled.
+                var back = Mathf.Clamp((nowAlong + move).Length() / pin.Farthest, 0f, 1f);
+                target.Y = Mathf.Min(target.Y, home.Y + (PeelLift * back));
+            }
         } else if (strain >= GripStrain) {
             pin.Peeling = true;
         }
@@ -1175,7 +1255,7 @@ public sealed partial class TissueSim {
             return target;
         }
         // Only the part of the move away from home is held back; sideways the grip still stays within what it gave.
-        var outward = nowAlong.IsZeroApprox() ? 0f : Mathf.Max(move.Dot(away), 0f);
+        var outward = Mathf.Max(move.Dot(away), 0f);
         // Peeled up off its bed, the edge stays where it stopped along the body: lifting it eases the strain, and
         // giving way sideways again would read as the skin letting go of the hand.
         var peeled = pin.Peeling && now.Y - home.Y > PeelLift * PeeledShare;
@@ -1216,6 +1296,9 @@ public sealed partial class TissueSim {
     /// <summary>Whether anything holds the sheet now: it may be moving.</summary>
     internal bool Gripped => _pins.Count > 0;
     public List<TissueGrip> Grips() => [.. _pins.Select(pin => new TissueGrip(pin.Key, pin.Value.Particle, pin.Value.Target, pin.Value.Origin))];
+
+    /// <summary>Where grip <paramref name="key"/> holds its skin now (site space), null when it holds none.</summary>
+    internal Vector3? GripTarget(int key) => _pins.TryGetValue(key, out var pin) ? pin.Target : null;
 
     /// <summary>The particle grip <paramref name="key"/> holds, -1 when it holds none.</summary>
     public int GrippedParticle(int key) => _pins.TryGetValue(key, out var pin) ? pin.Particle : -1;
@@ -1304,17 +1387,39 @@ public sealed partial class TissueSim {
 
     /// <summary>
     /// How much thread (relative to the span at rest) a new hole on grid point k pays out from the last hole of thread
-    /// <paramref name="id"/>: the skin between them as it's stretched now. A careful rhythm stays near 1; erratic
-    /// placement leaves up to twelve percent more thread to manage, never so much the wheel can't take it back. Host
-    /// only: the result goes to every peer with the hole.
+    /// <paramref name="id"/>: the skin between them as it's stretched now, between <see cref="LeastSlack"/> and
+    /// <see cref="MostSlack"/>. Host only: the result goes to every peer with the hole.
     /// </summary>
     public float ThreadSlack(int id, int k) {
         if (!_threads.TryGetValue(id, out var thread) || thread.Anchors.Count == 0) {
             return 1f;
         }
         var last = thread.Anchors[^1];
-        return Mathf.Clamp(Pos[last].DistanceTo(Pos[k]) / Mathf.Max(Rest[last].DistanceTo(Rest[k]), 0.0001f), 0.95f, 1.12f);
+        var stretched = Pos[last].DistanceTo(Pos[k]) / Mathf.Max(Rest[last].DistanceTo(Rest[k]), 0.0001f);
+        var slack = Mathf.Clamp(stretched, LeastSlack, MostSlack);
+        // Under the skin, across a cut a spreader holds open beside it (a Gelpi spreading it to sew the muscle), the span
+        // tugs the edges in only SpreadTug of the gap at once: drawn all the way in, it would fight the spreader and tear
+        // the skin beside its jaws. Spreader jaws grip with negative keys (Patient.SpreaderKey()).
+        if (thread.Layer != TissueDepth.Skin) {
+            foreach (var (key, pin) in _pins) {
+                if (key < 0 && Pos[pin.Particle].DistanceTo(Pos[k]) < SpreadReach) {
+                    return Mathf.Max(slack, stretched * (1f - SpreadTug));
+                }
+            }
+        }
+        return slack;
     }
+
+    /// <summary>Least and most slack a span keeps once the wheel draws the thread in (<see cref="ThreadSlack"/>): a careful
+    /// rhythm stays near 1; erratic placement leaves up to twelve percent more thread to manage, never so much the wheel
+    /// can't take it back.</summary>
+    private const float LeastSlack = 0.95f;
+    private const float MostSlack = 1.12f;
+    /// <summary>Share of the gap a span laid under a spreader tugs in at once (see <see cref="ThreadSlack"/>).</summary>
+    private const float SpreadTug = 0.2f;
+    /// <summary>How near (m) a spreader's jaw holds the cut where a span goes in for it to count as spreading it.
+    /// </summary>
+    private const float SpreadReach = 0.04f;
 
     /// <summary>Adds one puncture to a continuous running suture. The first puncture is only an anchor; every later
     /// one adds a span from the previous hole, <paramref name="slack"/> (see <see cref="ThreadSlack"/>) times as long
@@ -1329,8 +1434,11 @@ public sealed partial class TissueSim {
             return false;
         }
         if (thread.Anchors.Count > 0) {
-            thread.Slack.Add(slack);
-            thread.Springs.Add(AddSpring(thread.Anchors[^1], k, SpringKind.Stitch, ThreadRestScale(tension, layer) * slack, strength));
+            // The wheel draws in only the kept slack: a span laid loose under a spreader closes like any other.
+            thread.Slack.Add(Mathf.Clamp(slack, LeastSlack, MostSlack));
+            var span = AddSpring(thread.Anchors[^1], k, SpringKind.Stitch, ThreadRestScale(tension, layer) * slack, strength);
+            _springs[span].Flat = layer != TissueDepth.Skin;
+            thread.Springs.Add(span);
         }
         thread.Anchors.Add(k);
         thread.Holes.Add(uv);
@@ -1798,60 +1906,21 @@ public sealed partial class TissueSim {
             _prev[k] = p;
             _free[k] = 1f;
         }
-        foreach (var pin in _pins.Values) {
+        _handHolds = false;
+        foreach (var (key, pin) in _pins) {
             _free[pin.Particle] = 0f;
+            _handHolds |= key >= 0;
+            // A grip moved a long way at once (set down elsewhere, or by the host) draws its skin there over a few steps:
+            // all at once, the skin between it and a cut's edge would carry the whole jump across the cut in one step.
+            pin.Drawn = pin.Drawn.MoveToward(pin.Target, GripStep);
         }
         UpdateFoldState();
         TrackTurned();
         if (_fold.Bending) { IndexSprings(); }
+        BeginXpbdStep();
         for (var iteration = 0; iteration < Iterations; iteration++) {
-            foreach (var pin in _pins.Values) {
-                DragPatch(pin);
-            }
-            // Sweeping the springs forward then backward keeps corrections from always flowing one way across the grid.
-            var count = WindowSprings.Length;
-            for (var n = 0; n < count; n++) {
-                Solve(WindowSprings[iteration % 2 == 0 ? n : count - 1 - n]);
-            }
-            for (var pass = 0; pass <= StitchPasses; pass++) {
-                foreach (var s in _stitches) {
-                    Solve(s);
-                }
-            }
-            KeepCutEdgesApart();
-            foreach (var k in WindowParticles) {
-                // Skin pulled far from its spot has come loose from what's under it, so a flap can be folded back. A
-                // cut's edge lifted off the body isn't drawn back along it any more either: only skin lying on it is.
-                var back = _anchorTarget[k] - pos[k];
-                var hold = _anchor[k];
-                if (hold > Anchor) {
-                    hold = Mathf.Lerp(hold, LooseAnchor, Mathf.Clamp((pos[k].Y - _anchorTarget[k].Y) / LiftedOff, 0f, 1f));
-                }
-                pos[k] += back * hold * _free[k] * Mathf.Clamp(1f - back.Length() / AnchorReach, 0f, 1f);
-                // The surrounding bed stays put while a grip pulls the skin near it: on the weak anchor alone the
-                // sheet's tension would slide the whole site along, covered flanks included.
-                if (_fold.Roots.Count > 0 && !_fold.TurnedOver) {
-                    pos[k] += (_anchorTarget[k] - pos[k]) * (FoldAnchor * (1f - _fold.Near[k]) * _free[k]);
-                }
-            }
-            // Inside the loop, so the springs even out what the floor pushes up instead of snapping from it.
-            RelaxFolds();
-            KeepBendsRound();
-            KeepUpright();
-            KeepBendsRound();
-            PreserveLocalArea();
-            StayOnBody();
-            StayAboveFloor();
+            XpbdIteration();
         }
-        // Finish the area constraints after the last spring/anchor pass. Resolving one compressed face can move
-        // its neighbour, so a single sweep would leave folds that fit the skin but not its underlying thickness.
-        SeparateFoldNeighbors();
-        FindCompressedCells();
-        for (var pass = 0; pass < 8 && _fold.Active && !_fold.TurnedOver; pass++) {
-            if (!PreserveLocalArea(pass % 2 != 0, compressedOnly: true)) { break; }
-        }
-        StayAboveFloor();
-        UpdateFoldContact();
         var moved = 0f;
         var wandered = 0f;
         var farthest = 0f;
@@ -1889,18 +1958,27 @@ public sealed partial class TissueSim {
             // The patch is dragged from where it lay when the grip took hold (or the skin was last cut), not from
             // where its anchors would have it: skin bunched up beside a wound never gets there, and dragged from
             // there it would be strained by the grip before the hand moved at all.
-            pin.Base = [.. patch.Around.Select(j => Pos[j])];
+            // Taken again once the skin is cut or sewn, it's taken from where the patch was being drawn, not from
+            // where the skin it pulls on has sagged to since: it would creep back a little at every stitch.
+            var based = new Vector3[patch.Around.Length];
+            for (var n = 0; n < based.Length; n++) {
+                var at = Array.IndexOf(pin.GoalOf, patch.Around[n]);
+                based[n] = at >= 0 ? pin.Goal[at] : Pos[patch.Around[n]];
+            }
+            pin.Base = based;
             pin.BaseAt = Pos[k];
             pin.BaseFor = TopologyVersion;
+            pin.Goal = (Vector3[])based.Clone();
+            pin.GoalOf = patch.Around;
         }
-        Pos[k] = pin.Target;
-        var pull = pin.Target - _anchorTarget[k];
+        Pos[k] = pin.Drawn;
+        var pull = pin.Drawn - _anchorTarget[k];
         Hold(k);
         var drag = GripDrag * Mathf.Clamp(2f - pull.Length() / DragReach, 0f, 1f);
         if (drag <= 0f) {
             return;
         }
-        var shift = pin.Target - pin.BaseAt;
+        var shift = pin.Drawn - pin.BaseAt;
         var push = new Vector2(shift.X, shift.Z);
         var pushed = push.Length();
         var way = pushed > 0.0001f ? push / pushed : Vector2.Zero;
@@ -1913,7 +1991,8 @@ public sealed partial class TissueSim {
             var j = patch.Around[n];
             var ahead = new Vector2(Rest[j].X - Rest[k].X, Rest[j].Z - Rest[k].Z).Dot(way);
             var weight = ahead > 0f ? Mathf.Max(patch.Weights[n], 1f - ahead * falloff) : patch.Weights[n];
-            Pos[j] += (pin.Base[n] + shift * weight - Pos[j]) * drag * weight * _free[j];
+            pin.Goal[n] = pin.Base[n] + shift * weight;
+            Pos[j] += (pin.Goal[n] - Pos[j]) * drag * weight * _free[j];
         }
     }
 
@@ -1979,7 +2058,6 @@ public sealed partial class TissueSim {
         _win = window;
         _winParticleList.Clear();
         _winSpringList.Clear();
-        _winBendList.Clear();
         if (window.Size == Vector2I.Zero) {
             return;
         }
@@ -1998,14 +2076,13 @@ public sealed partial class TissueSim {
         for (var j = Math.Max(window.Position.Y - 1, 0); j <= window.End.Y; j++) {
             for (var i = Math.Max(window.Position.X - 1, 0); i <= window.End.X; i++) {
                 var k = Index(i, j);
-                foreach (var s in GridSprings(k)) {
+                foreach (var s in (ReadOnlySpan<int>)[SpringRight[k], SpringDown[k], SpringDiag[k], SpringAnti[k]]) {
                     if (s >= 0) {
                         springs.Add(s);
                     }
                 }
             }
         }
-        IndexBends();
         foreach (var k in WindowParticles) {
             _free[k] = 1f;
             // Skin coming back into the window starts out still, not with whatever motion it had when it left.
@@ -2068,10 +2145,24 @@ public sealed partial class TissueSim {
         }
     }
 
+    /// <summary>Whether a hand grips the sheet this step (spreader jaws, with negative keys, don't count).</summary>
+    private bool _handHolds;
+
+    /// <summary>A deep stitch rests while a hand holds the skin: the sheet's particles are the skin's, so drawn in
+    /// under a held lip it would drag the other lip across the opening after it.
+    /// Let go, it draws the lips in like the seam under them.</summary>
+    private bool Resting(int s) => _handHolds && _springs[s].Flat;
+
+    /// <summary>From a spring's A end to its B end: along the body only for a <see cref="Spring.Flat"/> one.</summary>
+    private Vector3 Span(Spring spring) {
+        var d = Pos[spring.B] - Pos[spring.A];
+        return spring.Flat ? d - _restNormal[spring.A] * d.Dot(_restNormal[spring.A]) : d;
+    }
+
     /// <summary>Moves the ends of an active spring toward its rest length, by how free each end is.</summary>
     private void Solve(int s) {
         ref readonly var spring = ref _springs[s];
-        if (!spring.Active) {
+        if (!spring.Active || Resting(s)) {
             return;
         }
         var wa = _free[spring.A];
@@ -2079,7 +2170,7 @@ public sealed partial class TissueSim {
         if (wa + wb == 0f) {
             return;
         }
-        var d = Pos[spring.B] - Pos[spring.A];
+        var d = Span(spring);
         var length = d.Length();
         if (length < 0.00001f) {
             return;
@@ -2131,26 +2222,6 @@ public sealed partial class TissueSim {
         var body = SettledHeightAt(Pos[k].X, Pos[k].Z);
         return Pos[k].Y - (float.IsNaN(body) ? Settled[k].Y : body) > LiftedOff
             || Pos[k].DistanceSquaredTo(Settled[k]) > BodyReach * BodyReach;
-    }
-
-    /// <summary>Whether skin k lies on the drape, or is part of the contact skirt (FoldContact()) joining skin on it to
-    /// the body: its faces would otherwise cross the cloth.</summary>
-    internal bool OnClothOrSkirt(int k) {
-        if (LiesOnCloth(k)) {
-            return true;
-        }
-        if (!FoldContact(k)) {
-            return false;
-        }
-        var at = CellOf(k);
-        for (var j = Math.Max(0, at.Y - 1); j <= Math.Min(ResY, at.Y + 1); j++) {
-            for (var i = Math.Max(0, at.X - 1); i <= Math.Min(ResX, at.X + 1); i++) {
-                if (LiesOnCloth(Index(i, j))) {
-                    return true;
-                }
-            }
-        }
-        return false;
     }
 
     private void StayAboveFloor() {
@@ -2230,6 +2301,39 @@ public sealed partial class TissueSim {
         foreach (var s in _stitches) {
             CheckSnap(s);
         }
+        foreach (var pin in _pins.Values) {
+            TearAtGrip(pin);
+        }
+    }
+
+    /// <summary>Skin a grip drags further than <see cref="TearReach"/> along the body tears beside the jaws, once:
+    /// the most stretched spring of the patch it drags. Drawn back within reach, a further pull can tear it again.
+    /// Not once the grip has lifted it off its bed (twice <see cref="LiftedOff"/>): a flap turned back is let go of by
+    /// its bed.</summary>
+    private void TearAtGrip(Pin pin) {
+        var k = pin.Particle;
+        var off = pin.Drawn - _anchorTarget[k];
+        pin.Raised = Mathf.Max(pin.Raised, off.Dot(_restNormal[k]));
+        var pulled = off.Slide(_restNormal[k]).Length();
+        if (pulled <= TearReach * BreakMult || pin.Raised >= LiftedOff * 2f) {
+            pin.Tore = false;
+            return;
+        }
+        if (pin.Tore) {
+            return;
+        }
+        var worst = -1;
+        var most = 0f;
+        foreach (var s in PatchOf(k).Springs) {
+            if (_springs[s].Active && _springs[s].Kind == SpringKind.Tissue && Span(_springs[s]).Length() / _springs[s].Rest > most) {
+                most = Span(_springs[s]).Length() / _springs[s].Rest;
+                worst = s;
+            }
+        }
+        if (worst >= 0) {
+            pin.Tore = true;
+            Snap(worst);
+        }
     }
 
     /// <summary>
@@ -2239,12 +2343,12 @@ public sealed partial class TissueSim {
     /// </summary>
     private void CheckSnap(int s) {
         ref readonly var spring = ref _springs[s];
-        if (!spring.Active) {
+        if (!spring.Active || Resting(s)) {
             return;
         }
         var (a, b) = (spring.A, spring.B);
         var limit = 1f + (spring.Break - 1f) * BreakMult;
-        if (Pos[a].DistanceTo(Pos[b]) / spring.Rest <= limit) {
+        if (Span(spring).Length() / spring.Rest <= limit) {
             return;
         }
         if (spring.Kind == SpringKind.Tissue) {
@@ -2255,6 +2359,14 @@ public sealed partial class TissueSim {
             if (!(StretchedPast(next, halfway) || StretchedPast(previous, halfway))) {
                 return;
             }
+        }
+        Snap(s);
+    }
+
+    /// <summary>Spring s lets go: a tissue one tears through the skin, a stitch comes undone.</summary>
+    private void Snap(int s) {
+        var (a, b) = (_springs[s].A, _springs[s].B);
+        if (_springs[s].Kind == SpringKind.Tissue) {
             Sever(s, TissueDepth.Skin, 0.5f);
         } else {
             _springs[s].Active = false;
@@ -2477,6 +2589,12 @@ public sealed partial class TissueSim {
             var acrossUv = new Vector2(square.X / Size.X, square.Y / Size.Y);
             var middle = Rest[spring.A].Lerp(Rest[spring.B], spring.Cross);
             var spread = RetractSpread[(int)depth];
+            // The window's edge is held where it lies: drawn back toward it from closer than the pull fades out, the skin
+            // between would be squeezed against it and pop up off the body once a lip is lifted. On each side the pull
+            // fades out by the edge instead, and draws back less the less room there is, so the skin is squeezed no more
+            // there than anywhere.
+            var ahead = RoomToEdge(middle, square);
+            var behind = RoomToEdge(middle, -square);
             var reach = Mathf.CeilToInt(spread / cell);
             // The strip of skin straight across the cut from this spring, a grid point at a time.
             for (var n = -reach; n <= reach; n++) {
@@ -2491,21 +2609,18 @@ public sealed partial class TissueSim {
                 var k = Index(i, j);
                 var offset = new Vector2(Rest[k].X - middle.X, Rest[k].Z - middle.Z);
                 var side = offset.Dot(square);
-                var weight = (1f - Mathf.Abs(side) / spread) * Mathf.Clamp(1f - (offset - square * side).Length() / cell, 0f, 1f) * taper;
                 // The spring's own ends: on the side they are on, even if the crossing was right at one of them.
-                if (k == spring.A) {
-                    side = 1f;
-                } else if (k == spring.B) {
-                    side = -1f;
-                }
-                if (weight <= 0f || side == 0f) {
+                var sign = k == spring.A ? 1f : k == spring.B ? -1f : Mathf.Sign(side);
+                var room = Mathf.Min(spread, sign > 0f ? ahead : behind);
+                var weight = (1f - Mathf.Abs(side) / room) * Mathf.Clamp(1f - (offset - square * side).Length() / cell, 0f, 1f) * taper;
+                if (weight <= 0f || sign == 0f) {
                     continue;
                 }
                 if (_pullAmount[k] == 0f && _pull[k] == Vector3.Zero) {
                     _retracted.Add(k);
                 }
-                _pull[k] += across * Mathf.Sign(side) * weight;
-                _pullAmount[k] = Mathf.Max(_pullAmount[k], Retract[(int)depth] * weight);
+                _pull[k] += across * sign * weight;
+                _pullAmount[k] = Mathf.Max(_pullAmount[k], Retract[(int)depth] * room / spread * weight);
             }
         }
         foreach (var k in _retracted) {
@@ -2520,7 +2635,7 @@ public sealed partial class TissueSim {
             // toward the site's middle, and lips drawn from there meet short of closed under a stitch.
             var home = Settled.Length == Pos.Length ? Rest[k] with { Y = Settled[k].Y } : Rest[k];
             _anchorTarget[k] = home + direction.Normalized() * retract;
-            _anchor[k] = Mathf.Max(_anchor[k], retract >= Retract[(int)TissueDepth.Skin] * 4f ? MusclePull : GapePull);
+            _anchor[k] = Mathf.Max(_anchor[k], retract > Retract[(int)TissueDepth.Fat] ? MusclePull : GapePull);
         }
         var activeLips = new List<int>();
         foreach (var k in _lipped) {
@@ -2532,6 +2647,15 @@ public sealed partial class TissueSim {
             activeLips.Add(k);
         }
         _lipped = activeLips;
+    }
+
+    /// <summary>How far (meters) from <paramref name="from"/> (site space) the window's edge lies along
+    /// <paramref name="way"/> (across the body).</summary>
+    private float RoomToEdge(Vector3 from, Vector2 way) {
+        var half = Size * 0.5f;
+        var x = way.X > 0f ? (half.X - from.X) / way.X : way.X < 0f ? (-half.X - from.X) / way.X : float.PositiveInfinity;
+        var z = way.Y > 0f ? (half.Y - from.Z) / way.Y : way.Y < 0f ? (-half.Y - from.Z) / way.Y : float.PositiveInfinity;
+        return Mathf.Max(Mathf.Min(x, z), 0.0001f);
     }
 
     /// <summary>The ends of the cuts: where each stroke started and the point of it farthest from there, unless another

@@ -15,9 +15,9 @@ The focused test run must pass separately; a successful comparison does not cert
 Release verification follows [docs/RELEASE.md](../../../docs/RELEASE.md) and runs every step.
 
 1. Run `./build.py screenshot_review` on a commit whose CI passed. It runs the same full regression as
-   `./build.py test --all --with-key-frames`, then writes `build/review/report.md`. A case that fails runs once more
-   on its own, and its successful run's key frames are the ones reviewed. It exits non-zero when the regression still
-   failed (the report is still written), when no baseline exists, and while any key frame differs from the baseline.
+   `./build.py test --all --with-key-frames`, then writes `build/review/report.md`. Nothing in it runs again. It
+   exits non-zero when the regression failed (the report is still written), when no baseline exists, and while any key
+   frame differs from the baseline.
 2. Read `build/review/report.md`. It lists, per test folder, only key frames that are missing, changed or new against
    the baseline committed in `tests/KeyFrames`, with where in the view a change is. A missing key frame or view is
    always a finding.
@@ -33,18 +33,15 @@ Release verification follows [docs/RELEASE.md](../../../docs/RELEASE.md) and run
 
 ## What goes into the baseline
 
-- Only key frames of a full regression, or of a passing focused run accepted by `generate_baseline --focused`.
-  `generate_baseline` refuses anything else; don't work around it by copying files into `tests/KeyFrames`.
-- A failed regression may still update the baseline. Review the failures manually: open the sheets of every suite
-  that still failed and update the baseline only if the case is not visibly broken. `generate_baseline` names those
-  suites and, in their folders, keeps the baseline's key frames and views they didn't take. This exception permits
-  reviewed frames from a failed full regression; it does not make the test run pass or the change ready for handoff.
-  Focused baseline updates always require a passing run. A case that can't be fixed in this change follows the
-  known-issue or broken policy in [CLAUDE.md](../../../CLAUDE.md#test-structure-and-policy).
+- Only key frames of a full regression that passed, or of a passing focused run accepted by
+  `generate_baseline --focused`. `generate_baseline` refuses anything else; don't work around it by copying files into
+  `tests/KeyFrames`. A case that can't be fixed in this change follows the known-issue or broken policy in
+  [CLAUDE.md](../../../CLAUDE.md#test-structure-and-policy).
   Broken cases are skipped and take no key frames; a passing full regression drops their old baseline frames.
 - Nothing that shows a defect, even when the regression passed. Fix it and run the review again.
 - If the review fails for lack of a baseline, or nearly every key frame shows as changed, the comparison itself is
-  off (no baseline committed yet, another renderer). Stop and report that. Don't generate a baseline unless that is
+  off (no baseline committed yet, another renderer: a machine without a display draws in software, not on the GPU the
+  baseline was drawn on). Stop and report that. Don't generate a baseline unless that is
   the task, and don't skip the review of the key frames your change touches.
 - On a merge conflict in `tests/KeyFrames`, take `develop`'s files, then take the key frames and generate again.
 

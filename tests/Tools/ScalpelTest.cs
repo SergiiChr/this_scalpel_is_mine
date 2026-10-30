@@ -103,7 +103,8 @@ public class ScalpelTest {
             .IsEqualApprox(Length, 0.005f);
         AssertBool(cut.Depth < Wound.MuscleDepth && !body.IsOpen(cut.Midpoint)).OverrideFailureMessage("a light cut stays in the skin")
             .IsTrue();
-        AssertFloat(Opening(body, from, to)).OverrideFailureMessage("the skin is open along the cut and closed past its ends")
+        var opening = Opening(body, from, to);
+        AssertFloat(opening).OverrideFailureMessage($"the skin is open along the cut and closed past its ends ({opening * 1000f:0} mm open)")
             .IsEqualApprox(Length, 0.01f);
 
         driver.Note("returns the scalpel to the tray");

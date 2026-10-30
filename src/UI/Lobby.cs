@@ -36,11 +36,16 @@ public partial class Lobby : Control {
             var row = Ui.HBox(8);
             row.AddChild(Ui.Label("Scenario", 18));
             var picker = new OptionButton();
-            foreach (var scenario in Db.Scenarios) {
+            foreach (var scenario in Db.Offered) {
                 picker.AddItem($"{scenario.Order:00}  {(scenario.Hidden ? "???" : scenario.Title)}");
             }
-            picker.ItemSelected += index => Net.ChangeScenario(Db.Scenarios[(int)index].Id);
+            picker.ItemSelected += index => Net.ChangeScenario(Db.Offered[(int)index].Id);
             row.AddChild(picker);
+            if (Settings.Debug) {
+                var skip = new CheckBox { Text = "Skip quirks and run modifiers", ButtonPressed = Net.SkipQuirks };
+                skip.Toggled += on => Net.SetSkipQuirks(on);
+                row.AddChild(skip);
+            }
             box.AddChild(row);
             _scenarioPicker = picker;
         }
@@ -90,7 +95,7 @@ public partial class Lobby : Control {
             _header.AddChild(Ui.Label($"PRE-OP BRIEFING: {(scenario.Hidden ? "???" : scenario.Title)}", 32, Ui.Pip));
             var description = scenario.Hidden ? "One injection. Then you listen." : scenario.Description;
             _header.AddChild(Ui.Label($"{scenario.StarsText}   {description}", 18, Ui.Ink, true));
-            _scenarioPicker?.Select(Db.Scenarios.ToList().IndexOf(scenario));
+            _scenarioPicker?.Select(Db.Offered.ToList().IndexOf(scenario));
         }
         foreach (var child in _roster.GetChildren()) {
             child.QueueFree();

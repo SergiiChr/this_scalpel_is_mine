@@ -6,7 +6,7 @@ namespace Scalpel.Tests.Data;
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke")]
 public partial class DataContractsTest {
-    private static IEnumerable<ScenarioDef> AllScenarios => Db.Scenarios.Concat(Db.DisabledScenarios);
+    private static IEnumerable<ScenarioDef> AllScenarios => Db.Scenarios.Concat(Db.DisabledScenarios).Concat(Db.DebugScenarios);
 
     private static ManualPage ConditionsPage => Db.Manual.First(page => page.Children.Count > 0);
 

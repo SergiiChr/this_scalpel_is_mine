@@ -30,6 +30,9 @@ public sealed record NeedleHit(string Part, Vector3 At, int Hand = -1);
 public partial class Surgeon : CharacterBody3D {
     public const float WalkSpeed = 1.6f;
     public const float Reach = 0.72f;
+    /// <summary>A hand holding onto the patient dragged this far (m) from its shoulder by the surgeon walking off has let
+    /// go of what it held (Surgery.Overstretched()).</summary>
+    internal const float Overreach = Reach + 0.06f;
     /// <summary>Radius of the body's capsule, as wide as the torso and the thighs: side-on, the legs stop right at the
     /// table's side instead of short of it, so its corners don't catch the player early. The upper arms reach a little
     /// past it.</summary>
@@ -70,7 +73,7 @@ public partial class Surgeon : CharacterBody3D {
     private const float CrouchSpeed = 0.35f;
     /// <summary>Zoom steps, cycled by the zoom key: camera field of view, widest first. Hand motion scales with the
     /// magnification, so the hand crosses the screen as fast at every step.</summary>
-    public static readonly float[] ZoomFov = [70f, 35f];
+    public static readonly float[] ZoomFov = [70f, 24f];
     /// <summary>How far in front of the eyes a tool is held up to look at it (Inspect).</summary>
     private const float InspectDistance = 0.26f;
     /// <summary>Tools whose needle the last zoom step frames: a syringe and the IV catheter.</summary>
@@ -315,6 +318,14 @@ public partial class Surgeon : CharacterBody3D {
         var dt = (float)delta;
         if (IsLocal) {
             LocalUpdate(dt);
+            // A remote surgeon's strain reaches the host with its state (SyncState()); the host's own is checked here.
+            if (Multiplayer.IsServer()) {
+                for (var i = 0; i < 2; i++) {
+                    if (_strain[i]) {
+                        Session.Overstretched(PeerId, i);
+                    }
+                }
+            }
             HandStates++;
             _syncAccumulated += dt;
             // Not after the report: the others may have left the surgery for the lobby, where a late state finds no

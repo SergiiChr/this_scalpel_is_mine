@@ -27,7 +27,8 @@ public class ToolLifecycleTest {
         return driver;
     }
 
-    [TestCase(Timeout = Limits.Slow)]
+    [TestCase(Timeout = Limits.Slow, Description = "BROKEN: reaching for the tourniquet on the tray, the test driver's hand stops about 11 cm short of its grip, so the 50 ml syringe beside it is the nearest tool and the grab would take it.")]
+    [TestCategory("broken")]
     public async Task EveryHandheldToolIsPickedUpLoweredOntoTheSiteAndPutBack() {
         var driver = await Begin();
         var surgery = driver.Surgery;

@@ -557,6 +557,13 @@ public partial class PatientBody : Node3D {
             .MinBy(ring => (p - ring!.Value.Center).Slide(ring.Value.Axis).Length() - ring.Value.Radius);
     }
 
+    /// <summary>Whether a band around <paramref name="ring"/> would lie over site point <paramref name="uv"/>: on that
+    /// limb, and nearer than <paramref name="clearance"/> (meters) to it along the limb.</summary>
+    public bool RingCovers(LimbRing ring, Vector2 uv, float clearance) {
+        var offset = UvToWorld(uv) - ring.Center;
+        return offset.Slide(ring.Axis).Length() < ring.Radius * 1.5f && Mathf.Abs(ring.Axis.Dot(offset)) < clearance;
+    }
+
     /// <summary>The ring of <paramref name="limb"/>'s skin around p, null when p isn't right at it.</summary>
     private LimbRing? RingAround(BodyPart limb, Vector3 p) {
         var axis = _bodyRoot.GlobalBasis.X.Normalized();

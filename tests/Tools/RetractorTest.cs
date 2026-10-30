@@ -51,6 +51,14 @@ public class RetractorTest {
         var lipsBefore = Lips(driver, middle);
         var wounds = patient.Wounds.Count;
 
+        // Held over the opening, the hook stays up at the lip where it can be aimed at an edge, not down inside.
+        var over = driver.SitePoint(middle);
+        var held = (await driver.PlayerRequestsItem("retractor"))!;
+        await driver.PlayerWalksTo(over);
+        await driver.PlayerReaches(over);
+        AssertFloat(held.TipPosition().Y - over.Y)
+            .OverrideFailureMessage($"held over the cut, the retractor's hook stays at its lip ({(held.TipPosition().Y - over.Y) * 1000f:0.0} mm above the skin)")
+            .IsGreater(-0.003f);
         var hookAt = driver.SitePoint(middle + new Vector2(0f, body.MetersToUv(HookOff)));
         var retractor = await Hook(driver, hookAt, "retractor");
         var hand = driver.Me.Hands[driver.Me.Active];
@@ -61,7 +69,8 @@ public class RetractorTest {
         await Frames.Seconds(1f);
         var opened = tissue.GapAt(middle, Middle);
         AssertFloat(opened - ownGape)
-            .OverrideFailureMessage($"drawn {Pull * 100f:0} cm aside, the cut opens ({(opened - ownGape) * 1000f:0.0} mm wider)")
+            .OverrideFailureMessage($"drawn {Pull * 100f:0} cm aside, the cut opens ({(opened - ownGape) * 1000f:0.0} mm wider, the hook "
+                + $"drawn {(retractor.TipPosition() - hookAt).Slide(Vector3.Up).Length() * 1000f:0.0} mm, strain {tissue.StrainAt(retractor.Uid):0.00})")
             .IsGreater(Pull * 0.5f);
         var lips = Lips(driver, middle);
         var hookedMoved = lips[1] - lipsBefore[1];
@@ -113,6 +122,31 @@ public class RetractorTest {
         await session.Finish(BudgetOverride);
     }
 
+    /// <summary>On a small site a deep cut gapes wide for its size: let down anywhere over its opening, the hook still
+    /// takes the edge on that side, not only right at the cut's line.</summary>
+    [TestCase]
+    public async Task RetractorHooksTheEdgeAnywhereOverAWideOpening() {
+        var session = await ToolSession.Start("skin_lab", "retractor/wide_opening");
+        var driver = session.Driver;
+        var body = driver.Body;
+        var middle = new Vector2(0.5f, 0.5f);
+        var half = new Vector2(body.MetersToUv(Length * 0.8f), 0f);
+        for (var level = 1; level <= 3; level++) {
+            await driver.PlayerCutsSkin(middle - half, middle + half, level);
+        }
+        await driver.PlayerPutsDown();
+        await Frames.Seconds(0.5f);
+        foreach (var across in (float[])[0.003f, 0.005f]) {
+            var at = middle + new Vector2(0f, across / body.SiteSize.Y);
+            AssertBool(body.Probe(driver.SitePoint(at)).Zone == SiteZone.Cavity)
+                .OverrideFailureMessage($"{across * 1000f:0} mm from the cut's line is over its opening").IsTrue();
+            var retractor = await Hook(driver, driver.SitePoint(at), $"let down {across * 1000f:0} mm from the line, the retractor");
+            await driver.PlayerLetsGoOfHold(retractor);
+            await Frames.Seconds(0.5f);
+        }
+        await session.Finish(BudgetOverride);
+    }
+
     /// <summary>Skin isn't dragged across the site like rubber: pulled past what it gives, it holds the hand where it
     /// stops (<see cref="TissueSim.Restrain"/>), the way holding onto something stops a hand.</summary>
     [TestCase]
@@ -128,6 +162,14 @@ public class RetractorTest {
         await driver.PlayerCutsSkin(from, to, 2);
         await driver.PlayerPutsDown();
         await Frames.Seconds(1f);
+        // Held over the opening, the hook stays up at the lip where it can be aimed at an edge, not down inside.
+        var over = driver.SitePoint(middle);
+        var held = (await driver.PlayerRequestsItem("retractor"))!;
+        await driver.PlayerWalksTo(over);
+        await driver.PlayerReaches(over);
+        AssertFloat(held.TipPosition().Y - over.Y)
+            .OverrideFailureMessage($"held over the cut, the retractor's hook stays at its lip ({(held.TipPosition().Y - over.Y) * 1000f:0.0} mm above the skin)")
+            .IsGreater(-0.003f);
         var hookAt = driver.SitePoint(middle + new Vector2(0f, body.MetersToUv(HookOff)));
         var retractor = await Hook(driver, hookAt, "retractor");
         var hand = driver.Me.Hands[driver.Me.Active];
@@ -203,7 +245,7 @@ public class RetractorTest {
             var k = risen.Index;
             GD.Print($"rim peak at {body.Tissue.UvOf(k)}: before {rim.First(edge => edge.Index == k).Point}, "
                 + $"LayerPoint {body.LayerPoint(0, k)}, drawn height {drawn[k]}, sim {body.Tissue.Pos[k]}, settled {body.Tissue.Settled[k]}, "
-                + $"fold {body.Tissue.NearFold(k)}, cloth {body.Tissue.OnClothOrSkirt(k)}, exposed {body.Tissue.Exposed[k]}");
+                + $"fold {body.Tissue.NearFold(k)}, cloth {body.Tissue.LiesOnCloth(k)}, exposed {body.Tissue.Exposed[k]}");
         }
         AssertFloat(risen.Rise)
             .OverrideFailureMessage($"the skin along the window's edge stays on the body under the drape's rim, no peak: it rises {risen.Rise * 1000f:0.0} mm at uv {body.Tissue.UvOf(risen.Index)}")

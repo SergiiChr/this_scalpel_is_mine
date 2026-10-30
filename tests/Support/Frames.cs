@@ -2,6 +2,14 @@ namespace Scalpel.Tests.Support;
 
 /// <summary>Waiting for the game: physics steps, drawn frames and game time.</summary>
 public static class Frames {
+    /// <summary>In a key frame run the game draws at the project's own size whatever its window's, as it does headless:
+    /// the camera's view, and so where the hand goes, mustn't depend on the display.</summary>
+    static Frames() {
+        if (KeyFrames.Wanted() && DisplayServer.GetName() != "headless") {
+            Root.ContentScaleMode = Window.ContentScaleModeEnum.Viewport;
+        }
+    }
+
     public static SceneTree Tree => (SceneTree)Engine.GetMainLoop();
 
     /// <summary>The scene tree's root, where tests add what they run.</summary>

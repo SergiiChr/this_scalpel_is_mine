@@ -12,13 +12,13 @@ public partial class PatientBody {
     /// down movement folds a layer over itself where the skin above it bunches up. See <see cref="LayerPoint"/>.
     /// </summary>
     private static readonly float[] LayerTether = [float.PositiveInfinity, float.PositiveInfinity, 0.008f];
-    /// <summary>How far (meters) the muscle rises with the skin over it before the skin and its fat peel off it (see
+    /// <summary>How far (meters) the muscle rises with the skin over it before the skin and its fat come off it (see
     /// <see cref="LayerPoint"/>).</summary>
     private const float MuscleLift = 0.004f;
-    /// <summary>How far (meters) the fat stretches between skin lifted off the muscle and the muscle before the skin
-    /// starts to peel off it. Lifted as far again, the skin has come off: the fat lies back on the muscle and the skin
-    /// rises alone (see <see cref="LayerPoint"/>).</summary>
-    internal const float FatStretch = 0.006f;
+    /// <summary>How far (meters) muscle cut free beside a wound slides along with the skin over it: the wound's edge
+    /// moves as one block that far, then the skin and its fat slide on over the muscle and uncover its cut edge.
+    /// </summary>
+    private const float FreedMuscleSlide = 0.012f;
     internal static readonly TissueDepth[] LayerDepth = [TissueDepth.Skin, TissueDepth.Fat, TissueDepth.Muscle];
     /// <summary>Movement over which the rendered skin adopts the deformed sheet's normals.</summary>
     private const float FlapMove = 0.015f;
@@ -174,10 +174,10 @@ public partial class PatientBody {
     private Vector3[] _skinOf = [];
     private Vector3[][] _pointOf = [[], [], []];
     private Vector3[] _outward = [];
+    /// <summary>Per grid point: how far its fat hangs upright rather than along the skin's normal (0..1), as captured
+    /// for the layers: under a lip lifted off the muscle (Outward()).</summary>
+    private float[] _fatUpright = [];
     private Vector3[] _normal = [];
-    /// <summary>Per grid point: how far (meters) its fat is stretched between the lifted skin and the muscle, as
-    /// captured for the layers: its walls reach down that much further.</summary>
-    private float[] _fatStretch = [];
     /// <summary>
     /// Where each grid point's skin lies on the body model (site space). The layers are drawn from these, not from where
     /// the sim settled (tension pulls the sheet a few millimeters off a round limb): resting skin lies exactly on the
@@ -200,6 +200,8 @@ public partial class PatientBody {
     /// the model.</summary>
     private bool[] _regionEdge = [];
     private Image _regionImage = null!;
+    /// <summary>The region's texels as bytes for <see cref="_regionImage"/>, kept between uploads.</summary>
+    private byte[] _regionBytes = [];
 
     /// <summary>Where the simulated skin replaces the body model, one texel per tissue grid point.</summary>
     public ImageTexture RegionTexture { get; private set; } = null!;
@@ -483,8 +485,9 @@ public partial class PatientBody {
         Tissue.CaptureGripLift(_renderGrip);
         foreach (var k in _around) {
             _renderMoved[k] = Moved(k);
-            // Only lifted skin stretches its fat, and only where the layers are drawn apart from it.
-            _fatStretch[k] = _renderMoved[k].Y > 0f && LayersApart(k) ? FatLift(FatGap(k, _renderMoved[k])) : 0f;
+            _fatUpright[k] = LayersApart(k)
+                ? Mathf.SmoothStep(0f, FatThickness, Follow(0, k, _renderMoved[k]).Rise - Follow(2, k, _renderMoved[k]).Rise)
+                : 0f;
         }
         for (var layer = 0; layer < 3; layer++) {
             Buffers.Sized(ref _renderPoints[layer], Tissue.Pos.Length);
@@ -535,21 +538,27 @@ public partial class PatientBody {
             instance.Visible = plan.Index.Count > 0 && (layer != 1 || FatThickness > 0.0005f);
             if (!instance.Visible) { continue; }
             var (sheet, walls) = built[layer];
-            foreach (var (surface, material) in new[] { (sheet, _layerMaterials[layer].Sheet), (walls, _layerMaterials[layer].Walls) }) {
-                if (surface is null) { continue; }
-                using var arrays = surface.ToArrays();
-                mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
-                mesh.SurfaceSetMaterial(mesh.GetSurfaceCount() - 1, material);
-            }
+            AddLayerSurface(mesh, sheet, _layerMaterials[layer].Sheet);
+            AddLayerSurface(mesh, walls, _layerMaterials[layer].Walls);
         }
         RememberDrawnTissue(built);
         if (_regionDirty) {
             // Carve the body only when the replacement meshes are ready, so the planning frame leaves no holes.
-            _regionImage.SetData(Tissue.ResX + 1, Tissue.ResY + 1, false, Image.Format.L8,
-                [.. _region.Select(texel => (byte)(texel * 255))]);
+            var bytes = Buffers.Sized(ref _regionBytes, _region.Length);
+            for (var k = 0; k < bytes.Length; k++) {
+                bytes[k] = (byte)(_region[k] * 255);
+            }
+            _regionImage.SetData(Tissue.ResX + 1, Tissue.ResY + 1, false, Image.Format.L8, bytes);
             RegionTexture.Update(_regionImage);
             _regionDirty = false;
         }
+    }
+
+    private static void AddLayerSurface(ArrayMesh mesh, Surface? surface, Material material) {
+        if (surface is null) { return; }
+        using var arrays = surface.ToArrays();
+        mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
+        mesh.SurfaceSetMaterial(mesh.GetSurfaceCount() - 1, material);
     }
 
     /// <summary>
@@ -570,8 +579,8 @@ public partial class PatientBody {
             _mark = new bool[count];
             _pointOf = [new Vector3[count], new Vector3[count], new Vector3[count]];
             _skinOf = new Vector3[count];
-            _fatStretch = new float[count];
             _outward = new Vector3[count];
+            _fatUpright = new float[count];
             _normal = new Vector3[count];
         }
         if (_xmap.Length < Tissue.SpringCount * 2) {
@@ -964,9 +973,9 @@ public partial class PatientBody {
             if (Tissue.FloorOpen.HasPoint(new Vector2(_skinOf[a].X, _skinOf[a].Z))
                 && Tissue.FloorOpen.HasPoint(new Vector2(_skinOf[b].X, _skinOf[b].Z))
                 && Tissue.FloorOpen.HasPoint(new Vector2(_skinOf[c].X, _skinOf[c].Z))) { return; }
-            // Only the cloth-contact skirt may be lifted onto the cloth. A neighbouring folded corner
+            // Only skin lying on the cloth may be lifted onto it. A neighbouring folded corner
             // must not drag quiet skin from under the drape's rim up into a peak.
-            if (!Tissue.OnClothOrSkirt(a) || !Tissue.OnClothOrSkirt(b) || !Tissue.OnClothOrSkirt(c)) { return; }
+            if (!Tissue.LiesOnCloth(a) || !Tissue.LiesOnCloth(b) || !Tissue.LiesOnCloth(c)) { return; }
             _clothFaces.PushTriangle(_skinOf, a, b, c, 0.004f, above: true);
         }
     }
@@ -990,11 +999,8 @@ public partial class PatientBody {
         // bones: that stays as the wound's bed, and walls that deep would stick out of the folded flap's edges. Skin
         // pulled aside less than its anchors give (a retracted edge) keeps its muscle.
         float WallThickness(int k) {
-            if (layer == 0) {
+            if (layer < 2) {
                 return thickness;
-            }
-            if (layer == 1) {
-                return thickness + _fatStretch[k];
             }
             var folded = Mathf.Max(TurnedAmount(k, _renderMoved[k], _renderTurnover),
                 Mathf.SmoothStep(TissueSim.AnchorReach * 0.5f, TissueSim.AnchorReach, _renderMoved[k].Length()));
@@ -1070,9 +1076,10 @@ public partial class PatientBody {
         }
         var output = scratch.NextOutput();
         var refinedCount = vertexCount + plan.Midpoints.Count + plan.Centers.Count;
-        var refinedVertices = Buffers.Sized(ref output.Vertices, refinedCount);
-        var refinedNormals = Buffers.Sized(ref output.Normals, refinedCount);
-        var refinedUvs = Buffers.Sized(ref output.Uvs, refinedCount);
+        // Grown, not sized: the plan, and so the count, changes as the skin moves about (UpdateRegion()).
+        var refinedVertices = Buffers.AtLeast(ref output.Vertices, refinedCount);
+        var refinedNormals = Buffers.AtLeast(ref output.Normals, refinedCount);
+        var refinedUvs = Buffers.AtLeast(ref output.Uvs, refinedCount);
         vertices.CopyTo(refinedVertices, 0);
         normals.CopyTo(refinedNormals, 0);
         uvs.CopyTo(refinedUvs, 0);
@@ -1101,7 +1108,7 @@ public partial class PatientBody {
             refinedUvs[v] = (uvs[a] + uvs[b] + uvs[c]) / 3f;
         }
         // The midpoints and centers belong to the grid point of their first corner.
-        var refinedOwner = Buffers.Sized(ref scratch.RefinedOwner, refinedVertices.Length);
+        var refinedOwner = Buffers.AtLeast(ref scratch.RefinedOwner, refinedCount);
         plan.Owner.CopyTo(refinedOwner);
         for (var n = 0; n < plan.Midpoints.Count; n++) {
             refinedOwner[vertexCount + n] = plan.Owner[plan.Midpoints[n].A];
@@ -1143,7 +1150,7 @@ public partial class PatientBody {
             // As drawn, curved lips included: what lies under the skin is kept under these triangles.
             RememberSkinSheet(refinedVertices, refinedUvs, index);
         } else {
-            for (var v = vertexCount; v < refinedVertices.Length; v++) {
+            for (var v = vertexCount; v < refinedCount; v++) {
                 refinedVertices[v] = UnderSkin(refinedVertices[v], refinedOwner[v]);
             }
         }
@@ -1199,9 +1206,8 @@ public partial class PatientBody {
                     var (out0, thick0) = lipDown[neighbours[0]];
                     var (out1, thick1) = lipDown[neighbours[1]];
                     var (outV, thickV) = lipDown[v];
-                    // Stretched fat eases both ways: kept to the thinner side, its wall would stop short of the muscle.
                     var average = (thickV * 2f + thick0 + thick1) * 0.25f;
-                    eased[v] = ((outV * 2f + out0 + out1).Normalized(), layer == 1 ? average : Mathf.Min(thickV, average));
+                    eased[v] = ((outV * 2f + out0 + out1).Normalized(), Mathf.Min(thickV, average));
                 }
             }
             foreach (var (v, down) in eased) {
@@ -1298,15 +1304,16 @@ public partial class PatientBody {
             if (normal.IsZeroApprox()) { return; }
             if (normal.Dot(start - refinedVertices[inside]) < 0f) { normal = -normal; }
             var first = wallVertices.Count;
-            wallVertices.AddRange([start, end, low]);
-            wallNormals.AddRange([normal, normal, normal]);
-            wallUvs.AddRange([plan.Uv[a], plan.Uv[b], plan.Uv[lip]]);
-            wallColors.AddRange([new Color(0f, 0f, 0f), new Color(0f, 0f, 0f), Colors.White]);
-            wallDepths.AddRange([new Vector2(depth, 0f), new Vector2(depth, 0f), new Vector2(depth + tipThickness, 0f)]);
+            // As spans: a collection expression handed to AddRange() would be a new array each time.
+            wallVertices.AddRange((ReadOnlySpan<Vector3>)[start, end, low]);
+            wallNormals.AddRange((ReadOnlySpan<Vector3>)[normal, normal, normal]);
+            wallUvs.AddRange((ReadOnlySpan<Vector2>)[plan.Uv[a], plan.Uv[b], plan.Uv[lip]]);
+            wallColors.AddRange((ReadOnlySpan<Color>)[new Color(0f, 0f, 0f), new Color(0f, 0f, 0f), Colors.White]);
+            wallDepths.AddRange((ReadOnlySpan<Vector2>)[new Vector2(depth, 0f), new Vector2(depth, 0f), new Vector2(depth + tipThickness, 0f)]);
             if ((low - start).Cross(end - start).Dot(normal) > 0f) {
-                wallIndices.AddRange([first, first + 1, first + 2]);
+                wallIndices.AddRange((ReadOnlySpan<int>)[first, first + 1, first + 2]);
             } else {
-                wallIndices.AddRange([first, first + 2, first + 1]);
+                wallIndices.AddRange((ReadOnlySpan<int>)[first, first + 2, first + 1]);
             }
         }
         var wallPoints = Filled(ref output.WallVertices, wallVertices);
@@ -1337,9 +1344,9 @@ public partial class PatientBody {
             if ((b - a).Cross(c - a).LengthSquared() <= 1e-20f) { wallIndices.RemoveRange(t, 3); }
         }
         return (
-            Surface.Of(refinedVertices, refinedNormals, refinedUvs, Filled(ref output.Indices, index)),
-            Surface.Of(wallPoints, Filled(ref output.WallNormals, wallNormals),
-                Filled(ref output.WallUvs, wallUvs), Filled(ref output.WallIndices, wallIndices),
+            Surface.Of(refinedVertices, refinedCount, refinedNormals, refinedUvs, Filled(ref output.Indices, index), index.Count),
+            Surface.Of(wallPoints, wallVertices.Count, Filled(ref output.WallNormals, wallNormals),
+                Filled(ref output.WallUvs, wallUvs), Filled(ref output.WallIndices, wallIndices), wallIndices.Count,
                 Filled(ref output.WallColors, wallColors), Filled(ref output.WallDepths, wallDepths)));
     }
 
@@ -1409,10 +1416,10 @@ public partial class PatientBody {
         public List<int> PointedIndex { get; } = [];
     }
 
-    /// <summary><paramref name="list"/>'s items in <paramref name="array"/>, sized to them
-    /// (<see cref="Buffers.Copied{T}"/>).</summary>
+    /// <summary><paramref name="list"/>'s items at the front of <paramref name="array"/>, grown to hold them
+    /// (<see cref="Buffers.CopiedInto{T}"/>): its length changes as the walls do, from one build to the next.</summary>
     private static T[] Filled<T>(ref T[] array, List<T> list) =>
-        Buffers.Copied(ref array, CollectionsMarshal.AsSpan(list));
+        Buffers.CopiedInto(ref array, CollectionsMarshal.AsSpan(list));
 
     /// <summary>The skin's sheet as last filled (FillLayer()), its triangles bucketed by site x and z, for
     /// UnderSkin(). The layers under the skin are filled after it from the same captured positions.</summary>
@@ -1490,11 +1497,10 @@ public partial class PatientBody {
     /// </summary>
     private Vector3 Outward(int layer, int k) {
         if (_renderTurnover) { return _outward[k]; }
-        if (layer == 1 && LayersApart(k)) {
-            // As fat stretches between skin and muscle its columns lengthen vertically. Lay their direction
-            // back onto that bed before peeling starts: retaining the skin's steep normal during the stretch
-            // makes neighboring long columns converge into a pleat, even before their tops descend.
-            return _outward[k].Slerp(Vector3.Up, Mathf.SmoothStep(0f, FatStretch, FatGap(k, _renderMoved[k]))).Normalized();
+        if (layer == 1 && _fatUpright[k] > 0f) {
+            // Under a lip lifted off the muscle the fat hangs upright: along the skin's normal, columns under its tight
+            // bends would converge and fold the fat over itself.
+            return _outward[k].Slerp(Vector3.Up, _fatUpright[k]).Normalized();
         }
         return float.IsPositiveInfinity(LayerTether[layer]) ? _outward[k] : Vector3.Up;
     }
@@ -1726,27 +1732,29 @@ public partial class PatientBody {
     }
 
     /// <summary>One surface's arrays, filled on any thread and wrapped for Godot only when published (ToArrays(), which
-    /// the caller disposes once the surface is added, see <see cref="Shapes.SetPacked{T}"/>).</summary>
-    private sealed record Surface(Vector3[] Vertices, Vector3[] Normals, Vector2[] Uvs, int[] Indices, Color[]? Colors,
-        Vector2[]? Uvs2) {
+    /// the caller disposes once the surface is added, see <see cref="Shapes.SetPacked{T}"/>). The arrays are buffers
+    /// kept between builds: only the first <paramref name="VertexCount"/> vertices (with their normals, uvs, colors and
+    /// second uvs) and <paramref name="IndexCount"/> indices are the surface's.</summary>
+    private sealed record Surface(Vector3[] Vertices, int VertexCount, Vector3[] Normals, Vector2[] Uvs, int[] Indices,
+        int IndexCount, Color[]? Colors, Vector2[]? Uvs2) {
         /// <summary>Null without any triangles: checked here, as reading the indices back out of the arrays would copy
         /// them.</summary>
-        public static Surface? Of(Vector3[] vertices, Vector3[] normals, Vector2[] uvs, int[] indices,
-            Color[]? colors = null, Vector2[]? uvs2 = null) =>
-            indices.Length == 0 ? null : new(vertices, normals, uvs, indices, colors, uvs2);
+        public static Surface? Of(Vector3[] vertices, int vertexCount, Vector3[] normals, Vector2[] uvs, int[] indices,
+            int indexCount, Color[]? colors = null, Vector2[]? uvs2 = null) =>
+            indexCount == 0 ? null : new(vertices, vertexCount, normals, uvs, indices, indexCount, colors, uvs2);
 
         public Godot.Collections.Array ToArrays() {
             var arrays = new Godot.Collections.Array();
             arrays.Resize((int)Mesh.ArrayType.Max);
-            Shapes.SetPacked(arrays, Mesh.ArrayType.Vertex, Vertices);
-            Shapes.SetPacked(arrays, Mesh.ArrayType.Normal, Normals);
-            Shapes.SetPacked(arrays, Mesh.ArrayType.TexUV, Uvs);
-            Shapes.SetPacked(arrays, Mesh.ArrayType.Index, Indices);
+            Shapes.SetPacked(arrays, Mesh.ArrayType.Vertex, Vertices.AsSpan(0, VertexCount));
+            Shapes.SetPacked(arrays, Mesh.ArrayType.Normal, Normals.AsSpan(0, VertexCount));
+            Shapes.SetPacked(arrays, Mesh.ArrayType.TexUV, Uvs.AsSpan(0, VertexCount));
+            Shapes.SetPacked(arrays, Mesh.ArrayType.Index, Indices.AsSpan(0, IndexCount));
             if (Colors is not null) {
-                Shapes.SetPacked(arrays, Mesh.ArrayType.Color, Colors);
+                Shapes.SetPacked(arrays, Mesh.ArrayType.Color, Colors.AsSpan(0, VertexCount));
             }
             if (Uvs2 is not null) {
-                Shapes.SetPacked(arrays, Mesh.ArrayType.TexUV2, Uvs2);
+                Shapes.SetPacked(arrays, Mesh.ArrayType.TexUV2, Uvs2.AsSpan(0, VertexCount));
             }
             return arrays;
         }
@@ -1757,33 +1765,24 @@ public partial class PatientBody {
     /// rests, moved as far as the sim moved it (Moved()). The skin and its fat move as one. The muscle slides along
     /// only as far as its tether lets it (LayerTether) and stays down on its bed while the skin lifts off it, so a
     /// pull on whole skin slides the skin over it. Beside a cut through it the muscle is cut free and goes with the
-    /// skin however far (TissueSim.Freed()): the wound's edge moves as one block of skin, fat and muscle along the
-    /// body. Lifted, the skin peels up off the muscle: it rises with them only <see cref="MuscleLift"/>, so a wound's
-    /// edge held up shows the muscle's cut edge under it. The fat between them first stretches with the skin (its
-    /// walls reach down to the muscle, FillLayer()); lifted further than <see cref="FatStretch"/> the skin comes off it
-    /// and the fat lies back on the muscle. A flap turned right over takes everything.
+    /// skin further (TissueSim.Freed(), <see cref="FreedMuscleSlide"/>): the wound's edge moves as one block of skin,
+    /// fat and muscle along the body. Lifted, the skin and its fat come up off the muscle together, as they would along the loose plane over its
+    /// fascia: the muscle rises with them only <see cref="MuscleLift"/>, so a wound's edge held up shows the muscle's cut
+    /// edge under it. A flap turned right over takes everything.
     /// </summary>
     public Vector3 LayerPoint(int layer, int k) {
         var moved = Moved(k);
         var (slide, follow, rise) = Follow(layer, k, moved);
-        if (layer == 1) {
-            var muscle = Follow(2, k, moved);
-            var gap = rise - muscle.Rise;
-            if (gap > FatStretch) {
-                slide = slide.Lerp(muscle.Slide, Peeled(gap) * 0.5f);
-                rise = muscle.Rise + FatLift(gap);
-            }
-        }
         var point = _onModel[k] + slide + Vector3.Up * rise;
         // Skin folded out over the drape lies on the cloth where it is now, not at the body's height under its old
         // spot, and the layers that come with it lie on it too; skin under the drape stays under it. A tethered
         // layer that stayed behind under exposed skin is left where it is: it's under the skin, whatever lies over.
-        if (Tissue.FloorAt is not null && (moved.LengthSquared() > 0.000001f || Tissue.FoldContact(k))) {
+        if (Tissue.FloorAt is not null && moved.LengthSquared() > 0.000001f) {
             var floorY = Tissue.FloorAt(point.X, point.Z);
             if (!float.IsNaN(floorY)) {
                 if (!Tissue.Exposed[k]) {
                     point.Y = Mathf.Min(point.Y, floorY - TissueSim.UnderDrape);
-                } else if ((layer == 0 || follow >= 0.999f) && Tissue.OnClothOrSkirt(k)) {
+                } else if ((layer == 0 || follow >= 0.999f) && Tissue.LiesOnCloth(k)) {
                     // Only where the sim lays it on the cloth: exposed skin a grip slid a few millimeters past the
                     // opening's edge stays on the body under the drape's rim, it isn't drawn up onto the cloth.
                     point.Y = Mathf.Max(point.Y, floorY);
@@ -1801,22 +1800,12 @@ public partial class PatientBody {
         var turned = tethered ? TurnedAmount(k, moved, Tissue.TurningFlap) : 1f;
         var freed = tethered ? Mathf.Max(Tissue.Freed(LayerDepth[layer], k), turned) : 1f;
         var slide = moved with { Y = 0f };
-        var tether = freed >= 0.999f ? float.PositiveInfinity : LayerTether[layer] / (1f - freed);
+        var tether = turned >= 0.999f || !tethered ? float.PositiveInfinity
+            : Mathf.Lerp(LayerTether[layer], FreedMuscleSlide, Tissue.Freed(LayerDepth[layer], k)) / (1f - turned);
         var follow = Mathf.Min(1f, tether / Mathf.Max(slide.Length(), 0.00001f));
         var rise = moved.Y * Mathf.Max(freed, follow);
         return (slide * follow, follow, Mathf.Lerp(Mathf.Min(rise, MuscleLift), rise, turned));
     }
-
-    /// <summary>How far (meters) the skin at grid point k, moved by <paramref name="moved"/>, stands above where the
-    /// muscle under it rises with it: what the fat between them has to bridge.</summary>
-    private float FatGap(int k, Vector3 moved) => Follow(0, k, moved).Rise - Follow(2, k, moved).Rise;
-
-    /// <summary>How far (meters) the fat's top stands above the muscle under skin <paramref name="gap"/> above it:
-    /// right under the skin while it stretches, then easing back down as the skin peels off it.</summary>
-    private static float FatLift(float gap) => gap <= FatStretch ? Mathf.Max(gap, 0f) : FatStretch * (1f - Peeled(gap));
-
-    /// <summary>How far skin <paramref name="gap"/> (meters) above the muscle has come off its fat (0..1).</summary>
-    private static float Peeled(float gap) => Mathf.SmoothStep(FatStretch, FatStretch * 2f, gap);
 
     /// <summary>How far grid point k is part of a flap turned over (0..1), <paramref name="moved"/> as far as it has:
     /// all the way once turned, right to its hinge, and kept once the hands have let go of it; while one is turning,

@@ -12,6 +12,9 @@ public partial class Patient {
     /// <summary>Jaws close on embedded glass with the tip over any of it that shows, or at most this far (meters)
     /// beside it: open, they straddle a blade seen edge on.</summary>
     public const float GlassReach = 0.005f;
+    /// <summary>How far (meters) from a cut's line a tip over an opening still finds that cut: as wide as a deep cut
+    /// gapes or a lip is drawn back, whatever the site's size.</summary>
+    private const float OpeningReach = 0.02f;
 
     /// <summary>
     /// Called when a clamp tool closes at the tip. Returns what it took hold of, for <see cref="UpdateGrip"/> and
@@ -22,7 +25,7 @@ public partial class Patient {
     public ToolHold? Grip(int toolUid, SiteZone zone, Vector2 uv, float depthM, bool skinOnly = false) {
         var tissue = Body.Tissue;
         if (skinOnly && zone == SiteZone.Cavity) {
-            if (NearestWound(uv, 0.03f, false) is not { } cut) {
+            if (NearestWound(uv, Body.MetersToUv(OpeningReach), false) is not { } cut) {
                 return null;
             }
             var line = cut.ClosestPoint(uv);
@@ -65,9 +68,12 @@ public partial class Patient {
                 return new OrganHold(organ, position - Body.Site.ToLocal(at));
             }
         }
-        var wound = NearestWound(uv, 0.03f, false);
-        if (wound is not null && zone == SiteZone.Cavity && !skinOnly && down && wound.BleedRate(1f, 1f) > 0f && wound.Depth > 0.6f) {
-            wound.Clamped = 0.85f;
+        var wound = NearestWound(uv, Body.MetersToUv(OpeningReach), false);
+        // Closed on a bleeding wound's edge from inside the opening, the jaws clamp it until they let go (Unclamp()).
+        var clamps = wound is not null && zone == SiteZone.Cavity && !skinOnly && down && wound.BleedRate(1f, 1f) > 0f
+            && wound.Depth > 0.6f;
+        if (clamps) {
+            wound!.Clamped = 0.85f;
         }
         // Skin can be pinched anywhere on the site, but from inside the cavity only at a wound's edge, up by the lip.
         if (zone == SiteZone.Site || (zone == SiteZone.Cavity && wound is not null && depthM < LipDepth)) {
@@ -85,10 +91,10 @@ public partial class Patient {
             var piece = zone == SiteZone.Site && tissue.PieceOf(tissue.GrippedParticle(toolUid)).Count > 0;
             var contact = Body.SitePoint(uv, Body.SkinHeight(uv));
             var offset = contact - tissue.Pos[tissue.GrippedParticle(toolUid)];
-            return new SkinHold(wound?.Id ?? 0, uv, skinOnly, piece, Offset: offset,
-                Origin: contact);
+            return new SkinHold(wound?.Id ?? 0, uv, skinOnly, piece, Offset: offset, Origin: contact, Clamps: clamps);
         }
-        return null;
+        // Deeper down, under the lip, they hold only the clamped edge.
+        return clamps ? new VesselHold(wound!.Id) : null;
     }
 
     /// <summary>
@@ -149,7 +155,8 @@ public partial class Patient {
             case TargetHold grip:
                 var target = Targets[grip.Target];
                 var local = Body.Site.ToLocal(tip);
-                var height = local.Y;
+                // Over the skin there, as a target's depth is under it: a limb's skin lies well below the site's plane.
+                var height = local.Y - Body.SurfaceHeight(Body.LocalToUv(local));
                 if (target.Anchor > 0f) {
                     var pulled = -target.Depth - height;
                     if (pulled < -0.02f) {
@@ -222,16 +229,27 @@ public partial class Patient {
                 }
                 break;
             case VesselHold vessel when !selfRetaining:
-                if (WoundWithId(vessel.Wound) is { } clamped) {
-                    clamped.Clamped = 0f;
-                }
+                Unclamp(vessel.Wound, toolUid);
                 break;
-            case SkinHold skin when !selfRetaining:
-                if (WoundWithId(skin.Wound) is { } wound) {
-                    wound.Clamped = 0f;
-                }
+            case SkinHold { Clamps: true } skin when !selfRetaining:
+                Unclamp(skin.Wound, toolUid);
                 break;
         }
+    }
+
+    /// <summary>The wound <paramref name="woundId"/> bleeds again once the tool <paramref name="toolUid"/> clamping it
+    /// lets go, unless another still clamps it (a hemostat left locked on it).</summary>
+    private void Unclamp(int woundId, int toolUid) {
+        if (WoundWithId(woundId) is not { } wound) {
+            return;
+        }
+        foreach (var tool in Session.Tools.Tools.Values) {
+            if (tool.Uid != toolUid && tool.Hold is VesselHold { Wound: var vessel } && vessel == woundId
+                || tool.Uid != toolUid && tool.Hold is SkinHold { Clamps: true, Wound: var edge } && edge == woundId) {
+                return;
+            }
+        }
+        wound.Clamped = 0f;
     }
 
     /// <summary>Host: the piece of skin cut out all round at uv comes off in the forceps that lifted it, as a skin graft

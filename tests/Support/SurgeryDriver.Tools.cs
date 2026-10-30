@@ -173,7 +173,8 @@ public partial class SurgeryDriver {
         await PlayerReaches(point);
         Tap(InputActions.UseTool);
         await PlayerInput.Delivered();
-        AssertBool(Me.HoldsPatient(Me.Active))
+        // In a network game the host takes the hold up and sends it back.
+        AssertBool(await Frames.Until(() => Me.HoldsPatient(Me.Active), 1f))
             .OverrideFailureMessage($"the empty hand clicked on the patient holds it\n{Recent()}").IsTrue();
         Note("holds the patient");
     }
@@ -186,6 +187,19 @@ public partial class SurgeryDriver {
         Note("lets go of the patient");
     }
 
+    /// <summary>Lets go of Use tool, and presses it once more if <paramref name="tool"/> still holds on (a clamp still
+    /// pinching): the jaws open.</summary>
+    public async Task PlayerLetsGoOfHold(SurgicalTool tool) {
+        Use(false);
+        await Frames.Physics(3);
+        if (tool.Hold is not null) {
+            Use();
+            await Frames.Physics(3);
+            Use(false);
+            await Frames.Physics(3);
+        }
+    }
+
     /// <summary>Puts the active hand's tool back on the instrument tray (holding nothing, does nothing).
     /// <paramref name="standing"/>: a bottle is stood upright there (Grab held), so a needle can go in through its cap.
     /// </summary>
@@ -193,15 +207,7 @@ public partial class SurgeryDriver {
         if (Me.HeldTool(Me.Active) is not { } tool) {
             return;
         }
-        Use(false);
-        await Frames.Physics(3);
-        if (tool.Hold is not null) {
-            // A clamp still pinching: pressed again it lets go.
-            Use();
-            await Frames.Physics(3);
-            Use(false);
-            await Frames.Physics(3);
-        }
+        await PlayerLetsGoOfHold(tool);
         if (Me.UsesLevel(Me.Active)) {
             await SetLevel(0);
         }

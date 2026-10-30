@@ -865,13 +865,17 @@ public partial class SurgeonHand : Node3D {
         // Turned already, it comes back only once the elbow clears with room to spare, so it doesn't hover at the line.
         var margin = _groundTurn != 0f ? ElbowClearance + 0.02f : ElbowClearance;
         if (GroundAt is { } groundAt && ElbowSupportWeight <= 0f && elbow.Y < groundAt(elbow) + margin) {
+            // Nowhere clear, it stays turned as it is. Found, the search stops even at the turn it already has: going on
+            // to the next one, it would swing between the two every frame.
             needed = _groundTurn;
-            for (var step = 1; step <= GroundSteps / 2 && needed == _groundTurn; step++) {
+            var found = false;
+            for (var step = 1; step <= GroundSteps / 2 && !found; step++) {
                 foreach (var sign in (float[])[1f, -1f]) {
                     var angle = sign * step * Mathf.Tau / GroundSteps;
                     var candidate = bendCenter + spoke.Rotated(direction, angle);
                     if (candidate.Y >= groundAt(candidate) + ElbowClearance) {
                         needed = angle;
+                        found = true;
                         break;
                     }
                 }

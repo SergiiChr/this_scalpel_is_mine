@@ -17,6 +17,12 @@ public partial class Surgeon {
     /// <summary>A syringe whose tip comes this close (meters, across the floor) to the middle of the IV bag on the stand
     /// snaps its needle into it.</summary>
     private const float DripSnap = 0.12f;
+    /// <summary>A syringe whose tip is this close (meters, across the floor) to the line from the eyes to the bag's
+    /// middle, short of it, snaps into it too: the bag hangs above the eyes, and looked up at, how far in front of it
+    /// the tip is can't be told.</summary>
+    private const float DripSightSnap = 0.08f;
+    /// <summary>Furthest short of the bag (meters, across the floor) <see cref="DripSightSnap"/> still snaps from.</summary>
+    private const float DripSightDepth = 0.3f;
     /// <summary>The same for a vial's cap.</summary>
     private const float VialSnap = 0.03f;
     /// <summary>A vial's cap faces a surgeon when it points up this much (standing, the share of straight up), or
@@ -116,6 +122,9 @@ public partial class Surgeon {
     /// Rests the tool tip just above whatever is under it. Lowered onto skin, it touches and presses in by effort level.
     /// Then keeps the hand within reach: far out, or down at the floor while standing, it stops short in the air.
     /// </summary>
+    /// <summary>How far (meters) a lowered tip presses into skin at effort <paramref name="level"/>.</summary>
+    internal static float PressDepth(int level) => 0.002f + (level * 0.004f);
+
     private void Constrain(SurgeonHand hand) {
         var tool = HeldTool(hand.Index);
         var offset = tool is not null ? hand.TipOffset(tool.Def.Length) : new Vector3(0f, -0.03f, 0f);
@@ -153,13 +162,16 @@ public partial class Surgeon {
                 var gap = !hand.Lowered || tool is null ? hover
                     : tool.Def.Action == "cut" ? BladeInOpening[hand.Level]
                     : 0.001f;
+                // A hook stays up at the lip, where it takes the cut's edge: dropped onto what's inside, there'd be nowhere
+                // to aim it at the edge from.
+                var hook = tool is not null && ToolActions.SkinHooks.Contains(tool.Def.Id);
                 // Forceps held at a depth stay there, lowered or not, but never into what's inside.
-                var floor = surface.Y + gap;
+                var floor = (hook ? Mathf.Max(surface.Lip, surface.Y) : surface.Y) + gap;
                 var tip = hand.HeldDepth is { } depth ? Mathf.Max(surface.Lip - depth, floor) : floor;
                 target.Y = tip - offset.Y;
             } else if (hand.Lowered && surface.Soft) {
                 // Skin gives: a lowered tip presses into it, deeper with effort.
-                target.Y = surface.Y - 0.002f - (hand.Level * 0.004f) - offset.Y;
+                target.Y = surface.Y - PressDepth(hand.Level) - offset.Y;
             } else if (surface.Soft && IsNeedle(tool)) {
                 // A needle over skin (or a glove) rests by its tip alone: its box reaches below the thin needle and would
                 // hold the tip well off the aim.
@@ -328,8 +340,8 @@ public partial class Surgeon {
     /// Over the fist holding a vial in the other hand (<see cref="HeldVialMeeting"/>), both hands ease toward each
     /// other: the vial turns cap up and the needle goes down into it. A vial hand gets its spot here too: its cap, the
     /// tool's tip, at the meeting point.
-    /// Over the IV bag (within <see cref="DripSnap"/> of its middle), it goes into the middle of the bag's face on the
-    /// hand's side, a little upward (<see cref="DripTilt"/>).
+    /// Over the IV bag (within <see cref="DripSnap"/> of its middle), or seen just beside it (<see cref="DripSightSnap"/>),
+    /// it goes into the middle of the bag's face on the hand's side, a little upward (<see cref="DripTilt"/>).
     /// Already snapped (<paramref name="held"/>), it lets go only <see cref="UnsnapMargin"/> further out, so passing over
     /// doesn't hold it for long.
     /// </summary>
@@ -435,7 +447,9 @@ public partial class Surgeon {
             return null;
         }
         var port = bag.Middle();
-        if (new Vector2(tip.X - port.X, tip.Z - port.Z).Length() >= reach) {
+        var margin = reach - DripSnap;
+        var across = new Vector2(tip.X - port.X, tip.Z - port.Z).Length();
+        if (across >= reach && !(across < DripSightDepth + margin && SeenAt(tip, port, DripSightSnap + margin))) {
             return null;
         }
         // The bag hangs along its length: its thinnest side across is the way through its faces.
@@ -445,6 +459,18 @@ public partial class Surgeon {
             Mathf.Wrap(Mathf.Atan2(face.X, face.Z) - Rotation.Y, -Mathf.Pi, Mathf.Pi),
             -SurgeonHand.TurnRange, SurgeonHand.TurnRange);
         return new SnapSpot(port, DripTilt, turn);
+    }
+
+    /// <summary>Whether, across the floor, <paramref name="target"/> lies straight on from this surgeon's eyes past
+    /// <paramref name="tip"/>, within <paramref name="reach"/> of that line: seen from below, the tip looks right under
+    /// it however far short of it it is.</summary>
+    private bool SeenAt(Vector3 tip, Vector3 target, float reach) {
+        // The eyes, not the camera: that moves over beside the needle once it's in (FrameNeedle()).
+        var eye = new Vector2(_head.GlobalPosition.X, _head.GlobalPosition.Z);
+        var toTip = new Vector2(tip.X, tip.Z) - eye;
+        var toTarget = new Vector2(target.X, target.Z) - eye;
+        var along = toTarget.Dot(toTip.Normalized());
+        return along > toTip.Length() && Mathf.Abs(toTarget.Cross(toTip.Normalized())) < reach;
     }
 
     /// <summary>How far below the hand the lowest point of its tool is (negative: below), the way the hand holds it now.

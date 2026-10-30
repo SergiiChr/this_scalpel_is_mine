@@ -32,6 +32,7 @@ public static class ScenarioFlow {
                 driver.AddChild(shots);
                 shots.Begin(surgery, "scenarios".PathJoin(scenarioId));
                 driver.OnKeyFrame = (keyFrame, description) => shots.Capture(keyFrame, description);
+                driver.OnViewFrame = shots.CaptureView;
                 await driver.Capture("untouched", "the site as the scenario starts, before any step");
             }
             // Loading the room isn't gameplay: the frame budget counts from here.
@@ -50,7 +51,7 @@ public static class ScenarioFlow {
                 var state = objectives.States[index];
                 await Frames.Until(() => state.Done || surgery.Finished, hold + Settle);
                 AssertBool(state.Done)
-                    .OverrideFailureMessage($"{scenarioId}: \"{step.Label}\" ({step.Type}) didn't complete. Last steps:\n{driver.Recent()}")
+                    .OverrideFailureMessage($"{scenarioId}: \"{step.Label}\" ({step.Type}) didn't complete. Last steps:\n{driver.Recent()}\nWounds:\n{driver.WoundList()}")
                     .IsTrue();
                 // Action helpers capture cut/extraction/closure; internal flags have no unique site photograph.
                 if (step.Type is "sanitize" or "flip" or "irrigate") {
@@ -65,10 +66,12 @@ public static class ScenarioFlow {
             }
             AssertBool(surgery.Finished)
                 .OverrideFailureMessage($"{scenarioId}: the surgery waits for the discharge: {surgery.Report?.Reason}").IsFalse();
+            var undone = string.Join(", ", objectives.Steps.Where((step, index) => !step.Optional && !objectives.States[index].Done)
+                .Select(step => $"\"{step.Label}\""));
             await driver.PlayerDischarges();
             var report = surgery.Report;
             AssertBool(report?.Success == true)
-                .OverrideFailureMessage($"{scenarioId} ends in success: {report?.Reason ?? "not finished"}, {surgery.Elapsed:0} s, {report?.Stars ?? 0} stars")
+                .OverrideFailureMessage($"{scenarioId} ends in success: {report?.Reason ?? "not finished"}, {surgery.Elapsed:0} s, {report?.Stars ?? 0} stars; not done: {undone}. Last steps:\n{driver.Recent()}\nWounds:\n{driver.WoundList()}")
                 .IsTrue();
             CheckTimeline(report!, objectives.Steps);
             validate?.Invoke(driver);

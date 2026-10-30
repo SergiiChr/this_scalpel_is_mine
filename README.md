@@ -28,8 +28,9 @@ Already have Godot 4.7.2 .NET? `GODOT_BIN=/path/to/godot ./build.py play`.
 
 ### Develop
 
-Asset generation and lint need Python 3.13 (`python3.13` on Fedora). Screenshots and visual tests need Xvfb and
-xauth; headless tests need no GPU. Any C# IDE works; the repository has Rider and VS Code test settings
+Asset generation and lint need Python 3.13 (`python3.13` on Fedora). Visual tests draw their key frames on an NVIDIA GPU
+from a Wayland desktop (Xwayland), or else in software under Xvfb and xauth, as screenshots do; headless tests need no
+GPU. Any C# IDE works; the repository has Rider and VS Code test settings
 (`.runsettings`).
 All agents start with [CLAUDE.md](CLAUDE.md), which links to the shared guidelines and [workflows](.claude/skills/).
 

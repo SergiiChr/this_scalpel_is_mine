@@ -49,7 +49,7 @@ import time
 import urllib.request
 import xml.etree.ElementTree as ElementTree
 import zipfile
-from collections.abc import Iterator, Sequence
+from collections.abc import Generator, Sequence
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -73,32 +73,24 @@ OUTPUT = BUILD / "ThisScalpelIsMine.x86_64"
 ASSEMBLY = ROOT / ".godot/mono/temp/bin/Debug/ThisScalpelIsMine.dll"
 # The runner class the GdUnit4 adapter writes before its first run and builds into the assembly.
 RUNNER_CLASS = ROOT / "gdunit4_testadapter_v5/GdUnit4TestRunnerScene.cs"
+# Runs a test process on an X server of its own on the desktop, drawn by the GPU (see the script).
+GPU_DISPLAY = ROOT / "tools/with_gpu_display.sh"
+# The suites the last test run with each set of options passed (see test --resume).
+LAST_RUN = BUILD / "test-results" / "last-run.json"
+# The options of the run the key frames among a run's belong to: a run with other options clears them.
+KEY_FRAMES_OF = "options"
 # Godot as test processes run it: without the adapter's editor pass (see the script), as setup() built and imported.
 TEST_GODOT = ROOT / "tools/godot_for_tests.sh"
 # A Godot step or test fails on any of these in its output, as well as on its own exit code or assertions.
 ERRORS = re.compile(r"SCRIPT ERROR|Parse Error|ERROR:|Unhandled exception")
-NOISE = re.compile(r"at exit|leaked", re.IGNORECASE)
+# The engine's leak reports as it quits, and the game's mouse capture failing in a key frame window on a desktop that
+# doesn't have the pointer: tests send their input as events, never through it. Godot's own Wayland driver would wait
+# for the pointer, but it stops drawing a window the compositor hides behind others, and a key frame never comes.
+NOISE = re.compile(r"at exit|leaked|NO GRAB", re.IGNORECASE)
 # GdUnit4's line once the Godot process running the cases has quit; missing when it hung and was killed.
 RUNNER_EXIT = re.compile(r"Godot Runtime Test Runner ends with exit code: (-?\d+)")
-# KeyFrames.SaveViewport's line for each key frame it saved, in its case's output.
-KEY_FRAME_SAVED = re.compile(r"^\s*Key frame saved: (.+?)\s*$", re.MULTILINE)
-# A case that finished but ran over its time limit, as problems() reports it. It isn't retried: it would run as slowly
-# the next time. A case GdUnit4 stops at its Timeout may have hung, and is.
-OVERRUN = re.compile(r"took \d+ s, longer than \d+ s\.$")
 # Stack trace lines kept under an error: enough to show where it came from.
 STACK_LINES = 12
-# Unexplained errors outside the game that now and then hit a test process, with no game code on their stack; the
-# cases still pass. A process failing on nothing but one of them runs once more.
-# Each hit is appended to INFRASTRUCTURE_LOG, for whoever pins the cause down.
-INFRASTRUCTURE_ERRORS = {
-    # In Godot's own C# glue as GdUnit4 starts.
-    "The underlying collection was modified from outside of the BlockingCollection": "the startup race in Godot's C# glue",
-    # In the test host as it shuts down after its cases, its connection to `dotnet test` already gone.
-    "Unable to write data to the transport connection": "the test host's connection closing at its exit",
-}
-# Logs and JUnit reports of every test process or suite before it ran again, which would overwrite them.
-RETRIES = BUILD / "retries"
-INFRASTRUCTURE_LOG = RETRIES / "infrastructure-errors.log"
 
 
 def run(command: Sequence[str | Path], **kwargs: object) -> None:
@@ -320,8 +312,15 @@ def need_venv() -> None:
 # than half of it, gets SLOW_TEST_TIMEOUT. A test that hangs is stopped when its suite's session runs out.
 TEST_TIMEOUT = 60
 SLOW_TEST_TIMEOUT = 360
-# The view key frames are rendered at, always under a virtual display.
-KEY_FRAME_ARGS = ["--rendering-method", "gl_compatibility", "--audio-driver", "Dummy", "--resolution", "1280x720"]
+# The view key frames are rendered at: a window of this size on the machine's display, or a virtual one without it.
+KEY_FRAME_ARGS = ["--rendering-method", "gl_compatibility", "--audio-driver", "Dummy", "--resolution", "1280x720", "--disable-vsync"]
+# What draws key frames on a machine with a display: its NVIDIA GPU, also where another one runs the desktop (PRIME
+# offload). The committed baseline is drawn by it; no two GPUs draw quite the same pixels.
+GPU_ENVIRONMENT = {
+    "__NV_PRIME_RENDER_OFFLOAD": "1",
+    "__GLX_VENDOR_LIBRARY_NAME": "nvidia",
+    "__EGL_VENDOR_LIBRARY_FILENAMES": "/usr/share/glvnd/egl_vendor.d/10_nvidia.json",
+}
 
 
 @dataclass
@@ -473,9 +472,16 @@ def frame_budget(suite: Suite, options: TestOptions) -> str:
 
 
 def runs_alone(suite: Suite, options: TestOptions) -> bool:
-    """Whether the suite's processes need the machine to themselves: they time frames, take key frames (told apart
-    by when they're written), or draw on the one display of a render budget run."""
-    return frame_budget(suite, options) != "off" or takes_key_frames(suite, options) or options.budget == "render"
+    """Whether the suite's processes need the machine to themselves: they time frames, play over the network (a host and
+    a client in processes of their own, whose messages a busy machine holds up), or draw on the one display of a render
+    budget run."""
+    return frame_budget(suite, options) != "off" or "network" in suite.categories or options.budget == "render"
+
+
+def has_display() -> bool:
+    """Whether key frames can be drawn on this machine's Wayland desktop and GPU (GPU_DISPLAY) rather than a virtual
+    display in software."""
+    return bool(os.environ.get("WAYLAND_DISPLAY")) and bool(shutil.which("Xwayland")) and Path(GPU_ENVIRONMENT["__EGL_VENDOR_LIBRARY_FILENAMES"]).exists()
 
 
 def godot_view(suite: Suite, options: TestOptions) -> list[str]:
@@ -534,54 +540,12 @@ class Outcome:
     log: Path
     failures: list[str]
     executed: int = 0
-    # The key frames (PNGs) it saved.
-    key_frames: set[Path] = field(default_factory=set)
-    failed_cases: dict[tuple[str, str], set[Path]] = field(default_factory=dict)
-    overran: dict[tuple[str, str], list[str]] = field(default_factory=dict)
-    attributed: bool = False
 
 
 @dataclass
 class ProcessResult:
     failures: list[str]
     executed: int = 0
-    # The cases that failed (JUnit class and name), each with the key frames it saved.
-    failed_cases: dict[tuple[str, str], set[Path]] = field(default_factory=dict)
-    # Those of them that failed on nothing but running over their time limit (OVERRUN), with those failures.
-    overran: dict[tuple[str, str], list[str]] = field(default_factory=dict)
-    # Every failure belongs to one of them: running them again is running all that failed.
-    attributed: bool = False
-    # The key frames (PNGs) it saved: the files new or rewritten while it ran. A process that takes key frames runs
-    # alone, so no other's can be among them.
-    key_frames: set[Path] = field(default_factory=set)
-
-
-def run_process(suite: Suite, options: TestOptions, name: str, test_filter: str, cases: int) -> ProcessResult:
-    """Runs one dotnet test process and counts the cases actually executed, once more after an infrastructure error
-    alone (INFRASTRUCTURE_ERRORS)."""
-    result = run_process_once(suite, options, name, test_filter, cases)
-    known = [next((what for marker, what in INFRASTRUCTURE_ERRORS.items() if marker in failure), None) for failure in result.failures]
-    if not known or None in known:
-        return result
-    kept = keep_attempt(name)
-    with INFRASTRUCTURE_LOG.open("a") as out:
-        out.write(
-            f"{time.strftime('%Y-%m-%d %H:%M:%S')} {name} (capacity {options.capacity}, key frames {options.key_frames}, "
-            f"{result.executed} cases ran), kept in {kept}:\n  " + "\n  ".join(result.failures) + "\n"
-        )
-    print(f"[WARN] {name} hit {' and '.join(sorted(set(filter(None, known))))} (see {INFRASTRUCTURE_LOG}); running it again.")
-    return run_process_once(suite, options, name, test_filter, cases)
-
-
-def keep_attempt(name: str) -> Path:
-    """Copies the logs and JUnit reports of the processes called name (a glob for a suite's isolated cases) into a
-    folder of their own under RETRIES, before they run again."""
-    stem = RETRIES / f"{time.strftime('%Y%m%d-%H%M%S')}-{name.replace('*', 'all')}"
-    kept = next(folder for attempt in itertools.count(1) if not (folder := stem.with_name(f"{stem.name}-{attempt}")).exists())
-    kept.mkdir(parents=True)
-    for source in [*(BUILD / "test-logs").glob(f"{name}.log"), *(BUILD / "test-results").glob(f"{name}.xml")]:
-        shutil.copyfile(source, kept / source.name)
-    return kept
 
 
 def godot_log(name: str) -> Path:
@@ -589,7 +553,7 @@ def godot_log(name: str) -> Path:
     return BUILD / "test-logs" / f"{name}.godot.log"
 
 
-def run_process_once(suite: Suite, options: TestOptions, name: str, test_filter: str, cases: int) -> ProcessResult:
+def run_process(suite: Suite, options: TestOptions, name: str, test_filter: str, cases: int) -> ProcessResult:
     """Runs one dotnet test process and counts the cases actually executed."""
     log = BUILD / "test-logs" / f"{name}.log"
     report = BUILD / "test-results" / f"{name}.xml"
@@ -611,23 +575,24 @@ def run_process_once(suite: Suite, options: TestOptions, name: str, test_filter:
     environment.setdefault("DOTNET_TC_QuickJitForLoops", "0")
     if takes_key_frames(suite, options):
         environment["WITH_KEY_FRAMES"] = "1"
-        # Always a virtual display and the software renderer, on a machine with a screen and a GPU too.
-        # Key frames are compared against the committed baseline, and no two GPUs draw the same pixels.
-        if not shutil.which("xvfb-run"):
-            return ProcessResult(["Key frames need xvfb-run."])
-        environment["LIBGL_ALWAYS_SOFTWARE"] = "1"
-        command = ["xvfb-run", "-a", "-s", "-screen 0 1280x720x24", *command]
+        if has_display():
+            # An X server of its own on the machine's display, drawn by its GPU like the committed baseline.
+            environment |= GPU_ENVIRONMENT
+            command = [str(GPU_DISPLAY), "1920x1080", *command]
+        elif shutil.which("xvfb-run"):
+            # No display (a cloud machine): a virtual one and the software renderer, close to the baseline but not the same.
+            environment["LIBGL_ALWAYS_SOFTWARE"] = "1"
+            command = ["xvfb-run", "-a", "-s", "-screen 0 1280x720x24", *command]
+        else:
+            return ProcessResult(["Key frames need a display or xvfb-run."])
     # GdUnit4 talks to its Godot process over a named pipe with a fixed name, which .NET puts in the temp folder:
     # runs at the same time (--jobs, other checkouts) each need their own.
     with log.open("w") as out, tempfile.TemporaryDirectory(prefix="gdunit-") as temp:
         environment["TMPDIR"] = temp
         # Godot's user:// (saves, settings, played games) under it too: tests never touch the player's own.
         environment["XDG_DATA_HOME"] = temp
-        before = key_frame_files()
         status = subprocess.run(command, stdout=out, stderr=subprocess.STDOUT, env=environment, check=False).returncode
-    result = problems(log, report, status, suite.timeout)
-    result.key_frames = {path for path, written in key_frame_files().items() if before.get(path) != written}
-    return result
+    return problems(log, report, status, suite.timeout)
 
 
 def problems(log: Path, report: Path, status: int, timeout: int) -> ProcessResult:
@@ -640,11 +605,8 @@ def problems(log: Path, report: Path, status: int, timeout: int) -> ProcessResul
     executed = sum(case.find("skipped") is None for case in cases)
     if not executed:
         found.append("[ERROR] Runnable test cases were selected, but no test cases ran.")
-    failed_cases: dict[tuple[str, str], set[Path]] = {}
-    overran: dict[tuple[str, str], list[str]] = {}
     for case in cases:
         name = f"{case.get('classname', '')} {case.get('name', '')}"
-        before = len(found)
         failure = case.find("failure")
         if failure is not None:
             found.append(f"[Failed] {name}: {failure.get('message', '')}")
@@ -653,12 +615,6 @@ def problems(log: Path, report: Path, status: int, timeout: int) -> ProcessResul
             found.append(f"[ERROR] {name}: {error.get('message', '')}")
         if float(case.get("time", "0")) > timeout:
             found.append(f"[ERROR] {name} took {float(case.get('time', '0')):.0f} s, longer than {timeout} s.")
-        if len(found) > before or len(cases) == 1:
-            output = "".join(element.text or "" for element in case.iter("system-out"))
-            failed_cases[(case.get("classname", ""), case.get("name", ""))] = {Path(path) for path in KEY_FRAME_SAVED.findall(output)}
-            if len(found) > before and all(OVERRUN.search(line) for line in found[before:]):
-                overran[(case.get("classname", ""), case.get("name", ""))] = found[before:]
-    in_cases = len(found)
     output = log.read_text(errors="replace")
     # The process log too: the engine reports some errors (startup, import, shutdown) outside any test's output.
     found += godot_errors("\n".join([*(element.text or "" for element in tree.iter("system-out")), output]))
@@ -668,22 +624,12 @@ def problems(log: Path, report: Path, status: int, timeout: int) -> ProcessResul
         found.append(f"[ERROR] Godot didn't quit cleanly after its cases (runner exit {exits[-1] if exits else 'never reported'}).")
     if status != 0 and not found:
         found.append(f"[ERROR] Test process exited with status {status}.")
-    # A process with one case fails only for it, whatever it fails on.
-    attributed = bool(found) and (len(cases) == 1 or len(found) == in_cases)
-    # A process with one case also fails for it on errors outside it.
-    if len(cases) == 1 and len(found) > in_cases:
-        overran.clear()
-    return ProcessResult(found, executed, failed_cases if found else {}, overran, attributed)
-
-
-def key_frame_files() -> dict[Path, int]:
-    """The run's key frames, each with when it was written."""
-    return {path: path.stat().st_mtime_ns for path in KEY_FRAMES.rglob("*.png")}
+    return ProcessResult(found, executed)
 
 
 @dataclass
 class Process:
-    """One test process of a suite: the whole suite, one of its isolated cases, or a case run again."""
+    """One test process of a suite: the whole suite or one of its isolated cases."""
 
     suite: Suite
     name: str
@@ -696,6 +642,19 @@ class Process:
         return run_process(self.suite, options, self.name, self.test_filter, self.cases)
 
 
+def row_filter(case: Case, value: str) -> str:
+    """The test filter for one row of a case. GdUnit4 names a method's only row without its values, so that row can't
+    be told apart by them."""
+    by_value = value and len(case.values) > 1
+    return f"FullyQualifiedName~.{case.method}" + (f"&Name~{escape(value)}" if by_value else "")
+
+
+def case_filter(cases: list[Case], text: str) -> str:
+    """The test filter for the rows whose names (method(values)) contain the text."""
+    rows = {row_filter(case, value) for case in cases for value in case.values or [""] if text in (f"{case.method}({value})" if value else case.method)}
+    return "|".join(f"({row})" for row in sorted(rows))
+
+
 def processes(suite: Suite, options: TestOptions) -> list[Process]:
     """The processes that run a suite's selected cases: none when no runnable case is selected."""
     base = f"FullyQualifiedName~{suite.full_name}."
@@ -706,7 +665,7 @@ def processes(suite: Suite, options: TestOptions) -> list[Process]:
     if not selected_names:
         return []
     if not suite.isolate_cases:
-        test_filter = base + (f"&Name~{escape(options.case)}" if options.case else "")
+        test_filter = base + (f"&({case_filter(cases, options.case)})" if options.case else "")
         return [Process(suite, suite.name, test_filter, len(selected_names), runs_alone(suite, options))]
     found: list[Process] = []
     for case in cases:
@@ -714,9 +673,7 @@ def processes(suite: Suite, options: TestOptions) -> list[Process]:
             name = f"{case.method}({value})" if value else case.method
             if options.case not in name:
                 continue
-            # GdUnit4 names a method's only row without its values, so that row can't be told apart by them.
-            by_value = value and len(case.values) > 1
-            test_filter = f"{base}&FullyQualifiedName~.{case.method}" + (f"&Name~{escape(value)}" if by_value else "")
+            test_filter = f"{base}&{row_filter(case, value)}"
             # Rows that share their first value (a scenario with and without a flag) share the filter, so one process
             # runs them both; a second with the same name would write the same log and report at the same time.
             if any(process.test_filter == test_filter for process in found):
@@ -745,13 +702,13 @@ def skipped_outcome(suite: Suite) -> Outcome:
 
 def gather(suite: Suite, results: Sequence[ProcessResult]) -> Outcome:
     """A suite's outcome from the results of all its processes."""
-    outcome = Outcome(suite, suite_log(suite), [], attributed=True)
+    outcome = Outcome(suite, suite_log(suite), [])
     for result in results:
         add(outcome, result)
     return outcome
 
 
-def run_all(queue: list[Process], options: TestOptions) -> Iterator[tuple[Process, ProcessResult]]:
+def run_all(queue: list[Process], options: TestOptions) -> Generator[tuple[Process, ProcessResult]]:
     """Runs processes, options.capacity at a time, and yields each with its result as it ends. Exclusive processes go
     first, one at a time with nothing beside them; then the others fill the capacity, slow suites' first, since the
     longest process started last is what makes a run's tail. An isolated suite's cases are processes like any other:
@@ -779,13 +736,7 @@ def fits(process: Process, running: Sequence[Process], capacity: int) -> bool:
     return len(running) < capacity
 
 
-def run_suite(suite: Suite, options: TestOptions) -> Outcome:
-    """Runs one suite's processes."""
-    todo = processes(suite, options)
-    return gather(suite, [result for _, result in run_all(todo, options)]) if todo else skipped_outcome(suite)
-
-
-def run_suites(suites: Sequence[Suite], options: TestOptions) -> Iterator[Outcome]:
+def run_suites(suites: Sequence[Suite], options: TestOptions) -> Generator[Outcome]:
     """Runs the suites' processes through run_all and yields each suite's outcome once its last process has ended, so
     suites come out in the order they finish."""
     todo = {suite.full_name: processes(suite, options) for suite in suites}
@@ -806,30 +757,6 @@ def add(outcome: Outcome, result: ProcessResult) -> None:
     """Counts one of its processes into a suite's outcome."""
     outcome.failures += result.failures
     outcome.executed += result.executed
-    outcome.failed_cases |= result.failed_cases
-    outcome.overran |= result.overran
-    outcome.attributed &= result.attributed or not result.failures
-    outcome.key_frames |= result.key_frames
-
-
-def run_cases(suite: Suite, options: TestOptions, cases: Sequence[tuple[str, str]]) -> Outcome:
-    """Runs the given cases (JUnit class and name) of a suite again, each in a process of its own."""
-    outcome = Outcome(suite, BUILD / "test-logs" / f"{suite.name}__retry_*.log", [], attributed=True)
-    todo = [
-        # A case's name is its method's, with ":index (values)" after it for each row of one.
-        # The process is named without the values: a long one would make its report's file name too long.
-        Process(
-            suite,
-            f"{suite.name}__retry_{re.sub(r'[^a-z0-9]+', '_', name.partition(' ')[0].lower()).strip('_')}",
-            f"FullyQualifiedName~{suite.full_name}.{name.partition(':')[0]}&Name={escape(name)}",
-            1,
-            runs_alone(suite, options),
-        )
-        for _, name in cases
-    ]
-    for _, result in run_all(todo, options):
-        add(outcome, result)
-    return outcome
 
 
 def report(outcome: Outcome) -> str:
@@ -860,7 +787,7 @@ def test(arguments: list[str]) -> int:
         prog="./build.py test",
         description="Runs GdUnit4 test suites under tests/. A suite fails on a failed case, a case over its time limit, "
         "any SCRIPT ERROR, ERROR: or unhandled exception in Godot's output, or no selected cases executed. "
-        "Suites with no runnable cases selected are skipped. "
+        "Suites with no runnable cases selected are skipped. Each suite's failures show as it ends; nothing runs again. "
         "Exits non-zero on any failure or if the entire run executes no cases.",
     )
     parser.add_argument("--all", action="store_true", help="every suite; without it or --tag, the smoke tag")
@@ -873,7 +800,8 @@ def test(arguments: list[str]) -> int:
     parser.add_argument(
         "--with-key-frames",
         action="store_true",
-        help="visual_confirmation suites save their key frames (a virtual display, the compatibility renderer); each of their processes runs alone",
+        help="visual_confirmation suites save their key frames (the compatibility renderer, drawn by this machine's NVIDIA "
+        "GPU on an Xwayland of their own on a Wayland desktop, or a virtual display and software rendering without one)",
     )
     parser.add_argument("--ci-run", action="store_true", help="never check frame times, print failed suites' logs")
     parser.add_argument(
@@ -883,6 +811,12 @@ def test(arguments: list[str]) -> int:
         "the 16 ms budget instead of the game's own work against the CPU budget",
     )
     parser.add_argument("--list", action="store_true", help="show what would run")
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="leave out the suites that passed in the last run with the same options: after fixing what failed, only "
+        "the suites that didn't pass run again; with key frames, the last run's are kept",
+    )
     parsed = parser.parse_args(arguments)
     if parsed.render_budget and (parsed.with_key_frames or parsed.ci_run):
         parser.error("--render-budget times frames on a real GPU: not with --with-key-frames or --ci-run")
@@ -902,49 +836,45 @@ def test(arguments: list[str]) -> int:
         run_broken=os.environ.get("RUN_BROKEN") == "1",
     )
     suites = selected(discover(), options)
+    # What the last run with these options passed: a resumed run leaves those suites out and keeps their key frames, as
+    # long as no run with other options (a check on a suite alone) has taken key frames since and cleared them.
+    selection = " ".join(argument for argument in arguments if argument != "--resume")
+    runs: dict[str, list[str]] = json.loads(LAST_RUN.read_text()) if LAST_RUN.exists() else {}
+    frames_of = KEY_FRAMES / KEY_FRAMES_OF
+    frames_kept = not options.key_frames or frames_of.exists() and frames_of.read_text() == selection
+    passed_before = set(runs.get(selection, [])) if parsed.resume and frames_kept else set()
+    suites = [suite for suite in suites if suite.full_name not in passed_before]
     if parsed.list:
         for suite in suites:
             print(f"{suite.full_name}  [{', '.join(suite.categories)}]")
         return 0
+    if not suites and passed_before:
+        print(f"Every suite passed in the last run ({len(passed_before)}).")
+        return 0
     if not suites:
         print(f"No tests match tags {options.tags} and case '{options.case}'.", file=sys.stderr)
         return 2
-    if options.key_frames:
+    if options.key_frames and not has_display():
+        print(
+            "[WARN] No Wayland desktop with Xwayland and an NVIDIA GPU: key frames are drawn in software, and nearly "
+            "every one will differ from the baseline drawn on the GPU.",
+            flush=True,
+        )
+    if options.key_frames and not passed_before:
         # Key frames of an earlier run would pass for this one's.
         shutil.rmtree(KEY_FRAMES, ignore_errors=True)
+        KEY_FRAMES.mkdir(parents=True)
+        frames_of.write_text(selection)
     setup()
     for folder in ("test-logs", "test-results"):
         (BUILD / folder).mkdir(parents=True, exist_ok=True)
     outcomes: list[Outcome] = []
     for outcome in run_suites(suites, options):
+        # Each suite's failures show as soon as it ends; the run goes on with the rest.
         print(report(outcome), flush=True)
         if options.ci_run and outcome.failures:
             print(log_tail(outcome), flush=True)
         outcomes.append(outcome)
-    # Only a full regression may become the baseline: not a focused run, nor one with broken cases.
-    full = parsed.all and not (parsed.tag or parsed.skip or parsed.case or options.run_broken)
-    if options.key_frames and full:
-        # A case failing in a regression for the baseline runs once more on its own, its key frames taken again in
-        # place of the failed attempt's: a flaky case shouldn't cost a whole new regression.
-        # A failure no case owns (an engine error between cases) runs the whole suite again.
-        # Cases that only ran over their time limit (OVERRUN) are not: they would run as slowly again.
-        for index, outcome in enumerate(outcomes):
-            again = [case for case in outcome.failed_cases if case not in outcome.overran] if outcome.attributed else []
-            if not outcome.failures or outcome.attributed and not again:
-                continue
-            kept = keep_attempt(outcome.log.stem)
-            what = f"cases {', '.join(name for _, name in again)}" if again else "suite"
-            print(f"Running the failed {what} of {outcome.suite.full_name} again (first attempt kept in {kept}).", flush=True)
-            for path in {path for case in again for path in outcome.failed_cases[case]} if again else outcome.key_frames:
-                path.unlink(missing_ok=True)
-            retry = run_cases(outcome.suite, options, again) if again else run_suite(outcome.suite, options)
-            # Its folders are those of both attempts: the retry may save fewer key frames.
-            retry.key_frames |= outcome.key_frames
-            # Cases left out still failed: on their time limit.
-            if again:
-                retry.failures += [line for lines in outcome.overran.values() for line in lines]
-            outcomes[index] = retry
-            print(report(retry), flush=True)
     pending = [
         (f"{suite.full_name}.{name}", description)
         for suite in suites
@@ -956,27 +886,18 @@ def test(arguments: list[str]) -> int:
         print(f"pending {name}: {description}")
     failed = sum(1 for outcome in outcomes if outcome.failures)
     skipped = sum(1 for outcome in outcomes if not outcome.failures and not outcome.executed)
-    print(f"{len(outcomes) - failed - skipped} passed, {failed} failed, {skipped} skipped, {len(pending)} pending.")
-    if not any(outcome.executed for outcome in outcomes):
+    earlier = f", {len(passed_before)} passed in the last run" if passed_before else ""
+    print(f"{len(outcomes) - failed - skipped} passed, {failed} failed, {skipped} skipped, {len(pending)} pending{earlier}.")
+    passed_now = passed_before | {outcome.suite.full_name for outcome in outcomes if not outcome.failures}
+    runs[selection] = sorted(passed_now)
+    LAST_RUN.write_text(json.dumps(runs, indent=2) + "\n")
+    if not any(outcome.executed for outcome in outcomes) and not passed_before:
         print("[ERROR] No test cases ran.", file=sys.stderr)
         return 1
-    if options.key_frames and full and has_key_frames(KEY_FRAMES):
-        # Each failed suite with the folders it saved key frames in: the only ones whose untaken key frames the
-        # baseline keeps. One that saved none can't say where its key frames are, so its run can't become the baseline.
-        unplaced = [outcome.suite.full_name for outcome in outcomes if outcome.failures and outcome.suite.visual and not outcome.key_frames]
-        if unplaced:
-            print(f"[ERROR] The key frames can't become the baseline: {', '.join(unplaced)} failed before saving any.", file=sys.stderr)
-        elif failed:
-            folders = {
-                outcome.suite.full_name: sorted({path.parent.relative_to(KEY_FRAMES).as_posix() for path in outcome.key_frames})
-                for outcome in outcomes
-                if outcome.failures
-            }
-            (KEY_FRAMES / FAILED).write_text(json.dumps(folders, indent=2) + "\n")
-        else:
-            (KEY_FRAMES / PASSED).touch()
-    elif options.key_frames and not failed and not options.run_broken and has_key_frames(KEY_FRAMES):
-        (KEY_FRAMES / FOCUSED).touch()
+    # Only a full regression that passed may become the baseline: not a focused run, nor one with broken cases.
+    full = parsed.all and not (parsed.tag or parsed.skip or parsed.case or options.run_broken)
+    if options.key_frames and not failed and not options.run_broken and has_key_frames(KEY_FRAMES):
+        (KEY_FRAMES / (PASSED if full else FOCUSED)).touch()
     return 1 if failed else 0
 
 
@@ -985,11 +906,8 @@ def test(arguments: list[str]) -> int:
 KEY_FRAMES = BUILD / "test-artifacts" / "screenshots"
 # Key frames of the last full regression that passed and was reviewed, committed: what a review compares against.
 BASELINE = ROOT / "tests" / "KeyFrames"
-# Left among a run's key frames by a full regression: only those may become the baseline.
-# FAILED maps each suite that failed even when run again to the folders of its key frames (JSON); they need a look
-# before they go in.
+# Left among a run's key frames by a full regression that passed: only those may become the baseline.
 PASSED = "passed"
-FAILED = "failed"
 # Left by a focused run with key frames that passed: a feature branch may add or replace its key frames in the baseline.
 FOCUSED = "focused"
 REVIEW = BUILD / "review"
@@ -1001,7 +919,7 @@ def has_key_frames(folder: Path) -> bool:
 
 
 def key_frame_run() -> int:
-    """Runs the full regression with key frames, which it marks (see PASSED and FAILED)."""
+    """Runs the full regression with key frames, which it marks when it passed (see PASSED)."""
     status = test(["--all", "--with-key-frames"])
     # The suites that take no key frames can pass on their own.
     if status == 0 and not (KEY_FRAMES / PASSED).exists():
@@ -1020,8 +938,7 @@ def generate_baseline(arguments: list[str]) -> int:
         prog="./build.py generate_baseline",
         description="Runs the full regression with key frames and writes the ones that are missing, changed or new into "
         "the committed baseline (tests/KeyFrames), all of them when there is none yet. Key frames that didn't change "
-        "keep their files. A regression with failed suites is written too, except that in their folders the baseline "
-        "keeps the key frames and views they didn't take: review those suites' sheets first.",
+        "keep their files. A regression that failed leaves the baseline as it was.",
     )
     parser.add_argument("--use-latest-set", action="store_true", help="take the key frames of the last run; only when it was a full regression")
     parser.add_argument("--focused", action="store_true", help="add or replace the key frames of the last focused run that passed")
@@ -1034,15 +951,10 @@ def generate_baseline(arguments: list[str]) -> int:
     if not parsed.use_latest_set:
         key_frame_run()
     # Key frames of a partial run never become what later reviews compare against.
-    if (KEY_FRAMES / PASSED).exists():
-        return keyframes_tool("update", KEY_FRAMES.relative_to(ROOT), BASELINE.relative_to(ROOT))
-    if not (KEY_FRAMES / FAILED).exists():
-        print("[ERROR] The baseline is left as it was: the key frames aren't those of a full regression.", file=sys.stderr)
+    if not (KEY_FRAMES / PASSED).exists():
+        print("[ERROR] The baseline is left as it was: the key frames aren't those of a full regression that passed.", file=sys.stderr)
         return 1
-    failed: dict[str, list[str]] = json.loads((KEY_FRAMES / FAILED).read_text())
-    print(f"[WARN] Writing the key frames of a regression in which these suites failed: {', '.join(failed)}.")
-    keep = [argument for folders in failed.values() for folder in folders for argument in ("--keep", folder)]
-    return keyframes_tool("update", KEY_FRAMES.relative_to(ROOT), BASELINE.relative_to(ROOT), *keep)
+    return keyframes_tool("update", KEY_FRAMES.relative_to(ROOT), BASELINE.relative_to(ROOT))
 
 
 def pillow_python() -> Path:

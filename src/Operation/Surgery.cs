@@ -442,7 +442,9 @@ public partial class Surgery : Node3D {
             return;
         }
         var anchor = hold is SkinHold skin ? skin.Anchor : Patient.Body.WorldToUv(tool.TipPosition());
-        Patient.Tear(anchor, new Vector2((float)GD.RandRange(-1.0, 1.0), (float)GD.RandRange(-1.0, 1.0)), 0.05f);
+        // Torn the way it was pulled: toward the hand dragged off with the surgeon.
+        var pulled = Patient.Body.WorldToUv(tool.TipPosition()) - anchor;
+        Patient.Tear(anchor, pulled.LengthSquared() > 1e-10f ? pulled : Vector2.Right, 0.05f);
         Patient.ReleaseGrip(tool.Uid, hold, false);
         tool.Hold = null;
         SetAttached(peer, hand, false);

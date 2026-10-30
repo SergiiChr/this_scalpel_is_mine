@@ -95,6 +95,9 @@ public sealed record ScenarioDef {
     public bool Hidden { get; init; }
     /// <summary>Left out of the menu and lobby while its positive flow test is broken (the cfg names the test).</summary>
     public bool Disabled { get; init; }
+    /// <summary>Offered only in debug mode (Settings.Debug), and left out of the scenario tests: a sandbox for trying a
+    /// mechanic out, with no flow to play through.</summary>
+    public bool DebugOnly { get; init; }
     public float TimeLimit { get; init; }
     public string Anesthesia { get; init; } = "";
     public string Site { get; init; } = "";
@@ -146,6 +149,7 @@ public sealed record ScenarioDef {
             Complaint = meta.String("complaint"),
             Hidden = meta.Bool("hidden"),
             Disabled = meta.Bool("disabled"),
+            DebugOnly = meta.Bool("debug_only"),
             TimeLimit = meta.Float("time_limit"),
             Anesthesia = meta.String("anesthesia"),
             Site = meta.String("site"),

@@ -35,7 +35,8 @@ A fresh container may lack the toolchain. Run this before anything that needs Go
 It downloads missing Godot and .NET tools, builds the C# and imports the project without sudo.
 If Microsoft's download host is blocked in a cloud session, install the SDK from system packages first:
 `apt-get install dotnet-sdk-10.0` on Ubuntu 24.04.
-Asset generation and lint also need `./build.py dev`; visual runs need Xvfb and xauth.
+Asset generation and lint also need `./build.py dev`; visual runs need a Wayland desktop with Xwayland and an
+NVIDIA GPU, or else Xvfb and xauth.
 Installation details and platform prerequisites: [README.md](README.md#develop).
 
 ## Checking a change
@@ -44,7 +45,9 @@ Installation details and platform prerequisites: [README.md](README.md#develop).
 - Wait for the test or script to finish before checking its results.
 
 Test commands exit non-zero and name what failed: a failed case, any `SCRIPT ERROR`, `ERROR:` or unhandled
-exception in Godot's output, or no cases run. A clean exit is a pass.
+exception in Godot's output, or no cases run. A clean exit is a pass. A run goes on past a failed suite, printing its
+failures as it ends; nothing runs again. `--resume` with the same command runs only the suites the last run didn't pass
+(see Development in docs/RELEASE.md).
 Suites with no runnable cases selected are reported as skipped, including suites whose only cases are excluded as
 broken.
 If runnable cases are selected but their test process executes none, the suite fails. If the entire selection executes
@@ -55,9 +58,9 @@ GitHub Actions runs smoke and full functional regression headlessly, then export
 - `./build.py test`: smoke suites, fast and headless. CI runs them on every PR; when to run them locally: see
   docs/RELEASE.md. This default smoke run and full regressions don't check frame times; focused runs (`--tag`, `--case`) do.
 - `./build.py test --all --with-key-frames`: full regression, with key-frame screenshots. Run
-  after smoke passes when a full local run is needed (see Development in docs/RELEASE.md). A case that fails in it
-  runs once more on its own, its key frames taken again (the whole suite when a failure belongs to no case), unless
-  it only ran over its time limit; the first attempt's logs go to `build/retries/`.
+  after smoke passes when a full local run is needed (see Development in docs/RELEASE.md). Key frames are drawn by
+  this machine's NVIDIA GPU, several processes at once, each on an X server of its own: a rootful Xwayland window on
+  the desktop.
 - `./build.py screenshot_review`: the same full regression, then `build/review/report.md` with a sheet for each key
   frame that is missing, changed or new against the baseline committed in `tests/KeyFrames`. It fails while any
   key frame differs from the baseline, and when there is none. Follow
@@ -66,9 +69,8 @@ GitHub Actions runs smoke and full functional regression headlessly, then export
   frames are expected; missing frames or a missing baseline fail that comparison. The test run must pass separately.
   `generate_baseline --focused` adds or replaces its reviewed key frames in the baseline.
 - `./build.py generate_baseline`: the same full regression, then writes the key frames that differ into the baseline
-  (every key frame the first time); unchanged ones keep their files. After a regression with failed suites it keeps
-  the baseline's key frames and views those suites didn't take, in their folders. `--use-latest-set` takes the key
-  frames of the last run instead of running again (see Visual verification).
+  (every key frame the first time); unchanged ones keep their files. A regression that failed leaves the baseline as
+  it was. `--use-latest-set` takes the key frames of the last run instead of running again (see Visual verification).
 - Focused runs: `--tag TAG` (repeatable), `--skip TAG`, `--case TEXT`, `--jobs N`, `--list`. See
   `./build.py test --help`. Logs and JUnit XML go to `build/test-logs/` and `build/test-results/`.
 - `./build.py performance_test`: every `frame_budget` suite with its frame times checked; a failure is a new issue or
@@ -134,7 +136,8 @@ These rules override any default PR or commit format a tool or agent brings.
   (`AllocationBudget.Check`, see docs/PERFORMANCE.md).
   `frame_budget` marks a suite that checks frame times (`Budget.Check` or `FrameBudget.Limit`, itself or
   through `ToolSession`, `SutureChecks`, `ScenarioFlow` or `GameplaySweep`; `RenderingOff()` alone doesn't count); its
-  processes run alone, before the rest.
+  processes run alone, before the rest. So do `network` suites' (a host and a client playing over the network, whose
+  messages a busy machine holds up).
   `slow` means one case takes over half the per-test limit (`TEST_TIMEOUT` in `build.py`); its cases take
   `[TestCase(Timeout = Limits.Slow)]`.
 - `smoke` cases are headless and programmatic, each under five minutes. They may take key frames only when their
@@ -189,14 +192,13 @@ These rules override any default PR or commit format a tool or agent brings.
   transitions and UI legibility. Screenshot comparisons may flag regressions but don't replace that review.
 - Never commit key frames of a failed run, of a case marked broken, or ones that show a defect; never edit the
   baseline by hand. A change with no missing, changed or new key frames leaves it untouched.
-- The failed-run rule has one exception: a full regression may supply manually reviewed, non-defective frames
-  under the failed-regression procedure in [review-key-frames](.claude/skills/review-key-frames/SKILL.md).
-  Focused updates always require a passing run; an accepted baseline never makes a failing run ready for handoff.
 - Broken cases are skipped and take no key frames. A passing full regression drops their old baseline frames.
 - Baseline acceptance and update commands: [review-key-frames](.claude/skills/review-key-frames/SKILL.md).
 - Key frames are taken and compared in local runs only, never on CI.
-  They are always rendered in a virtual display by the software renderer (`xvfb-run`), without film grain, so machines
-  save the same or nearly the same pixels for the same scene.
+  They are rendered without film grain by the compatibility renderer on an NVIDIA GPU, each process on a rootful
+  Xwayland of its own on a Wayland desktop: the baseline is drawn that way. A machine without one (a cloud container)
+  draws them in a virtual display by the software renderer (`xvfb-run`): close, but nearly every key frame shows as
+  changed.
   The review errs toward listing a key frame: a faint change over the whole view counts, so a sheet may show no
   visible difference.
 

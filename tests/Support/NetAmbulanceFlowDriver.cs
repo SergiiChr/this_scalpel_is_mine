@@ -20,7 +20,10 @@ public partial class NetAmbulanceFlowDriver : NetSession {
         for (var index = 0; index < steps.Count; index++) {
             var step = steps[index];
             var thisSide = step.Type is "extract" or "close" ? IsHost : !IsHost;
-            var action = thisSide ? driver.PlayerCompletes(step) : Task.CompletedTask;
+            // A needle or catheter goes into the arm on the host's side of the table, out of the client's reach: the
+            // host holds it still by the wrist while the client works.
+            var holdsArm = step.Type is "iv" or "anesthesia" && driver.Patient.Vitals.IsAwake;
+            var action = thisSide ? Work(driver, step, holdsArm) : holdsArm ? driver.PlayerHoldsForearm() : Task.CompletedTask;
             var deadline = Time.GetTicksMsec() + (ulong)(StepTimeout(step) * 1000f);
             bool Done() => surgery.Status.Objectives.Count > index && surgery.Status.Objectives[index].Done;
             string Seen() => $"status=[{string.Join(", ", surgery.Status.Objectives.Select(view => $"{view.Label}:{view.Done}"))}], "
@@ -32,6 +35,9 @@ public partial class NetAmbulanceFlowDriver : NetSession {
                 await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame).AsTask();
             }
             await action;
+            if (!thisSide && holdsArm) {
+                await driver.PlayerLetsGoWithFreeHand();
+            }
             if (thisSide) {
                 Check((driver.Me.GlobalPosition.Z - tableZ) * side > 0f,
                     $"{Role} completes {step.Label} from its assigned aisle");
@@ -55,6 +61,15 @@ public partial class NetAmbulanceFlowDriver : NetSession {
             await Wait(1.0);
         }
         GetTree().Quit();
+    }
+
+    /// <summary>Completes <paramref name="step"/>, once the other surgeon holds the patient still when
+    /// <paramref name="heldStill"/>.</summary>
+    private async Task Work(SurgeryDriver driver, ObjectiveStep step, bool heldStill) {
+        if (heldStill) {
+            await Until(() => driver.AnotherHoldsPatient, "the other surgeon holding the arm still", () => "not held");
+        }
+        await driver.PlayerCompletes(step);
     }
 
     private static float StepTimeout(ObjectiveStep step) {

@@ -37,9 +37,16 @@ public partial class SurgeryDriver : Node {
     /// <summary>Called (and awaited) with a name and a description of what it should show right after a step's key
     /// interaction: a cut made, a target out. Unset: no pictures.</summary>
     public Func<string, string, Task>? OnKeyFrame { get; set; }
+    /// <summary>Like <see cref="OnKeyFrame"/>, for what the surgeon sees (<see cref="CaptureView"/>).</summary>
+    public Func<string, string, Task>? OnViewFrame { get; set; }
     /// <summary>Optional room-side restriction used by co-op flows whose surgeons must work from opposing aisles.</summary>
     public Func<Vector3, bool>? StandingConstraint { get; set; }
+    /// <summary>Zooms all the way in before reaching over the patient, as a player does to see the work (see
+    /// <see cref="PlayerReaches"/>). Off for a test of the standing view or of zooming itself.</summary>
+    public bool ZoomsInToWork { get; set; } = true;
     private bool _budgetPaused;
+    /// <summary>The newest wound id <see cref="NoteNewWounds"/> has put on the trail.</summary>
+    private int _lastWound = -1;
 
     /// <summary>A driver added to the scene tree's root, ready to <see cref="Start"/>.</summary>
     public static SurgeryDriver Create() {
@@ -152,7 +159,28 @@ public partial class SurgeryDriver : Node {
         if (IsInstanceValid(Surgery) && Surgery.Running && !_budgetPaused) {
             Budget.Sample(Trail.Count > 0 ? Trail[^1] : "", Surgery.Elapsed);
         }
+        NoteNewWounds();
     }
+
+    /// <summary>Every wound the patient gets goes on the trail as it opens, right after the step that made it.</summary>
+    private void NoteNewWounds() {
+        if (!IsInstanceValid(Patient)) {
+            return;
+        }
+        var wounds = Patient.Wounds;
+        for (var n = 0; n < wounds.Count; n++) {
+            if (wounds[n].Id > _lastWound) {
+                _lastWound = wounds[n].Id;
+                Note($"wound #{Describe(wounds[n])} opens");
+            }
+        }
+    }
+
+    /// <summary>Every wound as it is now, for a failure message.</summary>
+    public string WoundList() => string.Join("\n", Patient.Wounds.Select(w => $"#{Describe(w)}, {w.Closure:P0} closed"));
+
+    private static string Describe(Wound w) =>
+        $"{w.Id} {w.Kind} depth {w.Depth:0.00} from {w.Points[0]} to {w.Points[^1]}, {w.LengthUv:0.000} uv";
 
     public void Note(string text) {
         var elapsed = IsInstanceValid(Surgery) ? Surgery.Elapsed : 0f;
@@ -169,6 +197,14 @@ public partial class SurgeryDriver : Node {
     public async Task Capture(string keyFrame, string description) {
         if (OnKeyFrame is not null) {
             await Unbudgeted(() => OnKeyFrame(keyFrame, description));
+        }
+    }
+
+    /// <summary>Key frame <paramref name="keyFrame"/> of what the surgeon sees, which should show
+    /// <paramref name="description"/>.</summary>
+    public async Task CaptureView(string keyFrame, string description) {
+        if (OnViewFrame is not null) {
+            await Unbudgeted(() => OnViewFrame(keyFrame, description));
         }
     }
 
@@ -228,6 +264,20 @@ public partial class SurgeryDriver : Node {
         Press(key);
         Release(key);
         await Frames.Seconds(0.3f);
+    }
+
+    /// <summary>Shift until the view is zoomed all the way in, as a player does to work on the patient: the surgeon
+    /// leans over what the hand works on and the hands turn see-through.</summary>
+    public async Task PlayerZoomsIn() {
+        if (Me.Zoom == Surgeon.ZoomFov.Length - 1) {
+            return;
+        }
+        for (var i = 0; i < Surgeon.ZoomFov.Length && Me.Zoom != Surgeon.ZoomFov.Length - 1; i++) {
+            Tap(InputActions.Zoom);
+            await PlayerInput.Delivered();
+        }
+        // The lean eases in over a moment.
+        await Frames.Seconds(1f);
     }
 
     public Vector3 SitePoint(Vector2 uv, float depth = 0f) => Body.UvToWorld(uv, depth);
@@ -376,8 +426,12 @@ public partial class SurgeryDriver : Node {
 
     /// <summary>Steers the active hand so its tool's tip (or the empty hand's fingertips) is over
     /// <paramref name="point"/>, across the floor. The game decides the height: hovering, or resting on what's under it
-    /// while Use tool is held.</summary>
+    /// while Use tool is held. Over the patient the player zooms all the way in first (<see cref="ZoomsInToWork"/>).
+    /// </summary>
     public async Task PlayerReaches(Vector3 point) {
+        if (ZoomsInToWork && Me.SurfaceBelow(point, false).Soft) {
+            await PlayerZoomsIn();
+        }
         var hand = Me.Hands[Me.Active];
         HoldHandKey(true);
         for (var i = 0; i < 8; i++) {

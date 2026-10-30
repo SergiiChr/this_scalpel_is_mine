@@ -38,9 +38,9 @@ public partial class PatientBody {
     /// <summary>Under this (meters) a hole is drawn where it was: the sim settles for a while after every pull.</summary>
     private const float HoleStill = 0.0002f;
 
-    /// <summary>A staple put in: the layer it holds and, per leg, the grid point it rides and its offset from it.
-    /// </summary>
-    private sealed record Staple(TissueDepth Layer, (int Particle, Vector3 Offset)[] Legs);
+    /// <summary>A staple put in: the layer it holds, per leg the grid point it rides and its offset from it, and half
+    /// its crown, from its middle to its second leg (site space, along the body).</summary>
+    private sealed record Staple(TissueDepth Layer, (int Particle, Vector3 Offset)[] Legs, Vector3 HalfCrown);
 
     private readonly List<Staple> _staples = [];
     private readonly Dictionary<int, DrawnSuture> _sutureDrawn = [];
@@ -102,7 +102,7 @@ public partial class PatientBody {
 
     /// <summary>A staple put in with its legs at a and b (uv, where they touched the tissue) through
     /// <paramref name="layer"/>. Each leg rides the grid point nearest it as the tissue lies now, so the staple moves
-    /// with the edges it holds.</summary>
+    /// with the edges it holds; its crown keeps its width (see StaplePath()).</summary>
     public void AddStaple(Vector2 a, Vector2 b, TissueDepth layer) {
         var legs = new[] { a, b }.Select(uv => {
             var p = (uv - new Vector2(0.5f, 0.5f)) * Tissue.Size;
@@ -114,7 +114,8 @@ public partial class PatientBody {
             }
             return (best, new Vector3(p.X - Tissue.Pos[best].X, 0f, p.Y - Tissue.Pos[best].Z));
         });
-        _staples.Add(new Staple(layer, [.. legs]));
+        var crown = (b - a) * Tissue.Size * 0.5f;
+        _staples.Add(new Staple(layer, [.. legs], new Vector3(crown.X, 0f, crown.Y)));
     }
 
     private static Vector2 Flat(Vector3 p) => new(p.X, p.Z);
@@ -143,6 +144,11 @@ public partial class PatientBody {
         var tops = staple.Legs
             .Select(leg => LayerPoint(layer, leg.Particle) + leg.Offset + Vector3.Up * (StapleRadius - LayerTop(layer)))
             .ToArray();
+        // The legs go where the points they ride take them, but the wire doesn't bend: it stays as wide as it went in
+        // about where they meet. Riding the very edges of a cut gaping as wide as the staple, the legs would meet at
+        // the seam.
+        var middle = (tops[0] + tops[1]) * 0.5f;
+        tops = [(middle - staple.HalfCrown) with { Y = tops[0].Y }, (middle + staple.HalfCrown) with { Y = tops[1].Y }];
         var path = new List<Vector3> { tops[0] - Vector3.Up * StapleLeg };
         for (var i = 0; i <= StapleSamples; i++) {
             var p = tops[0].Lerp(tops[1], (float)i / StapleSamples);

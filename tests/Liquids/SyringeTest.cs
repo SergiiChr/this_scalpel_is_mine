@@ -991,11 +991,10 @@ public class SyringeTest {
 
     /// <summary> Y20-Y22: a syringe swept over a vial snaps smoothly in through its cap, only when the cap faces the
     /// surgeon, and lets go soon after; zoomed in, a mouse move takes the hand as far across the screen as it does
-    /// zoomed out; in the needle view the mouse moves the hand as seen on screen; the needle rests on the back of the
-    /// other hand; a needle pressed into the skin keeps its tip in place, the mouse tilting the syringe about it, and
-    /// tears out when pulled on sideways; the aim shows where the needle goes in at any angle; a syringe brought to the
-    /// IV bag from waist height snaps its needle into the middle of the bag from the hand's side, and moved on, comes
-    /// out of it. </summary>
+    /// zoomed out; in the needle view the mouse moves neither the view nor the hand; the needle rests on the back of the
+    /// other hand; a needle pressed into the skin keeps its tip in place and tears out when walked away from; the aim shows where the needle goes in at any angle; a syringe
+    /// brought to the IV bag from waist height snaps its needle into the middle of the bag from the hand's side, and
+    /// moved on, comes out of it; held up in front of the bag, seen against it, it snaps in too. </summary>
     [TestCase]
     public async Task NeedleHandling() {
         await Begin();
@@ -1022,62 +1021,54 @@ public class SyringeTest {
         await _bench.Stage(SyringeBench.Cases[2]);
         await SyringeBench.Press();
         await Frames.Physics(40);
-        var right = (me.Camera.GlobalBasis.X * new Vector3(1f, 0f, 1f)).Normalized();
-        var away = (me.Camera.GlobalBasis.Y * new Vector3(1f, 0f, 1f)).Normalized();
+        var view = me.Camera.GlobalTransform;
+        var held = hand.Target;
         foreach (var motion in (Vector2[])[new(10f, 0f), new(0f, -10f)]) {
-            var before = hand.Target;
             for (var i = 0; i < 5; i++) {
                 await _bench.Steer(motion);
                 await Frames.Physics(1);
             }
-            var moved = (hand.Target - before) * new Vector3(1f, 0f, 1f);
-            var sideways = motion.X > 0f;
-            var along = moved.Dot(sideways ? right : away);
-            // The camera follows the syringe, so it turns a little as the hand moves.
-            AssertBool(along > 0.8f * moved.Length() && along > 0.005f)
-                .OverrideFailureMessage($"needle_hand: in the needle view the mouse {(sideways ? "right" : "up")} "
-                    + $"moves the hand {(sideways ? "right" : "away")} on screen "
-                    + $"({along:0.000} m of {moved.Length():0.000})")
-                .IsTrue();
         }
+        AssertBool(me.Camera.GlobalTransform.IsEqualApprox(view) && hand.Target.DistanceTo(held) < 0.0005f)
+            .OverrideFailureMessage("needle_hand: the needle view and the hand hold still while Use tool is held, whatever "
+                + $"the mouse does (view {me.Camera.GlobalPosition.DistanceTo(view.Origin) * 1000f:0.0} mm, hand "
+                + $"{hand.Target.DistanceTo(held) * 1000f:0.0} mm moved)")
+            .IsTrue();
         await SyringeBench.Release();
         await _bench.ZoomTo(0);
         await Frames.Physics(40);
         await BackOfHandChecks();
         await _bench.Stage(SyringeBench.Cases[6]);
-        // Moved once the camera has come round to the needle view: turning, it would turn the mouse's way with it.
         await Frames.Until(() => me.NeedleFraming >= 0.99f, 1f);
         var tip = Syringe.TipPosition();
-        var tilt = hand.Tilt;
-        var grip = hand.GlobalPosition;
         for (var i = 0; i < 5; i++) {
             await _bench.Steer(new Vector2(0f, 10f));
             await Frames.Physics(1);
         }
         await Frames.Physics(5);
         var drift = Syringe.TipPosition().DistanceTo(tip);
-        AssertBool(drift < 0.001f && !Mathf.IsEqualApprox(hand.Tilt, tilt)
-                && hand.GlobalPosition.DistanceTo(grip) > 0.005f)
-            .OverrideFailureMessage($"needle_hand: a needle in the skin keeps its tip in place ({drift:0.0000} m) "
-                + $"and the mouse tilts the syringe about it (tilt {tilt:0.00} -> {hand.Tilt:0.00})")
-            .IsTrue();
+        AssertFloat(drift).OverrideFailureMessage($"needle_hand: a needle in the skin keeps its tip in place, the mouse "
+            + $"moving nothing ({drift * 1000f:0.0} mm)").IsLess(0.001f);
         AssertObject(me.NeedleAnchor).OverrideFailureMessage("needle_hand: the needle is in the skin").IsNotNull();
         var wentIn = me.NeedleAnchor!.Value;
         var body = Surgery.Patient.Body;
         var beadsBefore = Surgery.Effects.Beads();
-        for (var i = 0; i < 60 && !me.NeedleTorn; i++) {
-            await _bench.Steer(new Vector2(20f, 0f));
+        // Walked away from out of reach.
+        PlayerInput.Action(InputActions.MoveBack);
+        for (var i = 0; i < 180 && !me.NeedleTorn; i++) {
             await Frames.Physics(1);
         }
+        PlayerInput.Action(InputActions.MoveBack, false);
         var scratch = body.WoundMap.Value(WoundMap.Layer.Wounds, WoundMap.Cut, body.WorldToUv(wentIn));
         AssertBool(me.NeedleTorn && scratch > 0f)
             .OverrideFailureMessage(
-                $"needle_hand: pulled on, the needle tears out and leaves a scratch where it was in ({scratch:0.00})")
+                $"needle_hand: walked away from, the needle tears out and leaves a scratch where it was in ({scratch:0.00})")
             .IsTrue();
         var tornBeads = Surgery.Effects.Beads().Except(beadsBefore).ToList();
         AssertInt(tornBeads.Count).OverrideFailureMessage("needle_hand: tearing out leaves one bead").IsEqual(1);
-        AssertFloat(((tornBeads[0].GlobalPosition - wentIn) * new Vector3(1f, 0f, 1f)).Length())
-            .OverrideFailureMessage("needle_hand: even after tearing out, the bead stays at the injection point")
+        var beadOff = ((tornBeads[0].GlobalPosition - wentIn) * new Vector3(1f, 0f, 1f)).Length();
+        AssertFloat(beadOff)
+            .OverrideFailureMessage($"needle_hand: even after tearing out, the bead stays at the injection point ({beadOff * 1000f:0.0} mm off)")
             .IsLess(0.0005f);
         await _bench.Withdraw();
         await AimLands(me, hand);
@@ -1108,8 +1099,9 @@ public class SyringeTest {
                 + $"little upward into the middle of the bag, from the hand's side ({off * 100f:0.0} cm off, rising "
                 + $"{rise:0.00}, hand at {hand.GlobalPosition.Y:0.00} m)")
             .IsTrue();
+        // Sideways: straight back toward the eyes it would stay in line with the bag (see the next check).
         for (var i = 0; i < 10; i++) {
-            await _bench.Steer(new Vector2(0f, 30f));
+            await _bench.Steer(new Vector2(30f, 0f));
             await Frames.Physics(1);
         }
         await Frames.Physics(20);
@@ -1117,6 +1109,20 @@ public class SyringeTest {
             .OverrideFailureMessage("needle_hand: moved on from the bag, the needle comes out of it and the hand "
                 + "holds the syringe as before "
                 + $"({Syringe.TipPosition().DistanceTo(bag.Middle()):0.00} m from its middle)")
+            .IsTrue();
+        // Held out toward the bag from where the surgeon stands, straight on from the eyes but well short of it.
+        var eye = me.Camera.GlobalPosition * new Vector3(1f, 0f, 1f);
+        var shortOf = 0.2f;
+        var toward = eye + ((under - eye).Normalized() * ((under - eye).Length() - shortOf));
+        var move = (toward - (hand.TipOffset(Syringe.Def.Length) * new Vector3(1f, 0f, 1f)) - me.ToGlobal(hand.LocalTarget))
+            * new Vector3(1f, 0f, 1f);
+        for (var i = 0; i < 10; i++) {
+            await _bench.Steer(PlayerInput.HandMotion(me, move / 10f) * Settings.MouseSensitivity);
+        }
+        await Frames.Physics(40);
+        AssertBool(InContainer(_bench.NeedleTarget(), bag))
+            .OverrideFailureMessage($"needle_hand: held out under the IV bag as seen from the eyes, {shortOf * 100f:0} cm short of it "
+                + $"across the floor, the needle snaps into it (tip {Syringe.TipPosition()}, bag {bag.Middle()})")
             .IsTrue();
         await End();
     }

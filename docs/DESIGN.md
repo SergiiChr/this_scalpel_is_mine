@@ -92,9 +92,11 @@ overview, the data formats designers edit and the design decisions.
   the edges actually meet. How it's simulated and drawn is documented on those classes.
 - A hand holding skin is held by it: pulled past what the skin gives (`TissueSim.GripStrain`, the longest spring at
   the held skin over its rest length) the grip stops where the skin does and the hand comes back to it
-  (`TissueSim.Restrain()`, `Surgery.HoldHandBack()`), so skin isn't dragged across the site like rubber. Pulled on
-  from there, it peels a cut's lip up off what's under it instead (`TissueSim.PeelLift`): the skin and its fat rise,
-  the muscle stays down (`PatientBody.LayerPoint()`), so a tight wound held up shows its muscle edge for the needle.
+  (`TissueSim.Restrain()`, `Surgery.HoldHandBack()`), so skin isn't dragged across the site like rubber. With two
+  tools on a cut's lips, each answers for the skin nearest its own jaws and feels the other's stretch only softly
+  (`TissueSim.Owns()`), so one hand never freezes the other. Pulled on from there, it peels a cut's lip up off what's
+  under it instead (`TissueSim.PeelLift`): the skin and its fat rise, the muscle stays down
+  (`PatientBody.LayerPoint()`), so a tight wound held up shows its muscle edge for the needle.
   A flap cut free swings as far as its hinge lets it. Skin still tears where a tool forces it (a surgeon walking away
   holding on, a thread pulled too tight).
 - Skin damage (`skin.gdshader` + `WoundMap`): two painted textures (same texel size on every site, 128-512 px) drive cut grooves, burns (red halo to charred core),
@@ -224,7 +226,10 @@ Rolling rules live in `src/Data/QuirkRoller.cs`: 1-3 surgeon quirks, with 3 at l
 `[scenario]` holds metadata and setup, `[patient]` the starting wounds, burns, internal wounds and cavity targets,
 `[objectives]` the steps. The file name gives the id (`03_appendectomy.cfg` -> `appendectomy`), the number the order.
 `disabled=true` keeps a scenario out of the menu and lobby while its positive flow test is a known issue or broken; a
-comment beside it names the test.
+comment beside it names the test. `debug_only=true` offers a sandbox (`90_skin_lab.cfg`) only in debug mode and keeps
+it out of the scenario tests. In debug mode the lobby's host can also tick "Skip quirks and run modifiers"
+(`Net.SkipQuirks`): the run then rolls no surgeon quirks, run modifiers or patient quirks beyond the scenario's fixed
+ones.
 
 Objective step types (`src/Operation/ObjectiveChecks.cs`):
 `sanitize, irrigate, iv, anesthesia, sedate, local_block, mark, incise, extract, close, close_internal, stop_bleeding, stabilize,
@@ -551,12 +556,10 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
   Air sits at the needle end and goes out first. Pushing into the patient or a surgeon gives what's pushed as it goes
   in, one notch at a time.
 - **Needle in the patient sticks**: with Use tool held and the needle in a vein or tissue, its tip stays exactly where
-  it went in (no tremor, no lift). Moving the mouse toward or away from the body tilts the syringe about the tip, the
-  hand swinging round it (`Surgeon.BendNeedle()`). What the tilt can't follow (sideways, or past the tilt range)
-  stretches the skin by a fifth of the motion; stretched 1.5 cm, or walked away from out of reach, the needle tears
-  out: a short scratch, a bead of blood and pain (`Patient.NeedleTear()`). It then moves freely until Use tool is
-  let go. Releasing Use tool withdraws it immediately and leaves a visual blood bead exactly at the puncture, without
-  adding pain or a scratch (`ToolManager.RequestNeedleWithdrawal()`). Moving the hand afterward cannot tear it out.
+  it went in (no tremor, no lift), and the mouse does nothing (see Needle view). Walked away from out of reach, the
+  needle tears out: a short scratch, a bead of blood and pain (`Patient.NeedleTear()`). It then moves freely until
+  Use tool is let go. Releasing Use tool withdraws it immediately and leaves a visual blood bead exactly at the
+  puncture, without adding pain or a scratch (`ToolManager.RequestNeedleWithdrawal()`). Moving the hand afterward cannot tear it out.
 - **Held facing you**: picked up, a syringe is held ready to inject (grip `syringe`): the index and middle fingers over
   its finger grip, the thumb on the plunger, following it in and out (`SurgeonHand.ReachPlunger()`). It points a
   little down and in toward the body's middle, the hand off to its outer side, with the printed scale turned toward
@@ -567,8 +570,8 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
   Use tool with a syringe zooms all the way in on its own and back out when let go.
   Once a syringe's needle is in (Use tool held in a vial, the dish, the bag, the patient or a glove), the camera moves
   beside it, side on and a little above, so the needle and what it's in are in view, and the hand rolls the syringe
-  about its length so the printed scale faces the camera. There the mouse moves the hand as seen from the camera:
-  right on screen is right, up is away from it. Use tool let go, the camera goes back and the scale turns back to the
+  about its length so the printed scale faces the camera. The view and the hand hold still there, whatever the mouse
+  does: only the wheel works the plunger. Use tool let go, the camera goes back and the scale turns back to the
   eyes.
 - **Dosing**: the chart shows the patient's weight, the manual the dose per kg (`dose` in drugs.cfg).
   Doses add up (`DrugLevels`, for the patient and the surgeons alike): every injection goes into a depot that soaks
@@ -718,7 +721,8 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
 ### Tourniquet
 
 - Pressed onto an arm or a leg it wraps around the limb there: a band snug on the skin (`PatientBody.LimbRing()`
-  measures the limb from inside with rays), and the hand lets go of it. Grabbing it again takes it off.
+  measures the limb from inside with rays), and the hand lets go of it. Grabbing it again takes it off. Not across
+  the surgical site on that limb (`PatientBody.RingCrossesSite()`): the player is told it goes on above the wound.
 
 ### Holding the patient
 
@@ -750,7 +754,8 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
 - **Suture tension**: the wheel sets the needle's thread tension and paper clips' pull alike, down tighter and up
   looser, and the hand status reads it (loose, closed, too tight). Loose leaks, too tight can tear through. The
   needle pulls its current thread only: without one the wheel does nothing, and each new thread starts loose
-  (`ToolActions.SutureStartTension`).
+  (`ToolActions.SutureStartTension`). A thread in the fat or muscle draws the lips in along the body only, and not at
+  all while a hand holds the skin (`TissueSim.Resting()`): the other lip stays where it lies under a held one.
 - **Run modifiers** (`data/run_modifiers.cfg`): 1-2 per run, rolled in the lobby so both players see them before starting.
   A column beside the surgeons' cards explains this run's; the main menu's Run modifiers lists all of them, the locked
   ones hidden. A modifier unlocks the first time a run starts with it; locked ones roll all the same.
