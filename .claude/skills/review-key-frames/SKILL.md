@@ -15,9 +15,9 @@ The focused test run must pass separately; a successful comparison does not cert
 Release verification follows [docs/RELEASE.md](../../../docs/RELEASE.md) and runs every step.
 
 1. Run `./build.py screenshot_review` on a commit whose CI passed. It runs the same full regression as
-   `./build.py test --all --with-key-frames`, then writes `build/review/report.md`. The regression stops at its first
-   failed suite. It exits non-zero when the regression failed (the report is still written, the suites it didn't run
-   showing as missing), when no baseline exists, and while any key frame differs from the baseline.
+   `./build.py test --all --with-key-frames`, then writes `build/review/report.md`. Nothing in it runs again. It
+   exits non-zero when the regression failed (the report is still written), when no baseline exists, and while any key
+   frame differs from the baseline.
 2. Read `build/review/report.md`. It lists, per test folder, only key frames that are missing, changed or new against
    the baseline committed in `tests/KeyFrames`, with where in the view a change is. A missing key frame or view is
    always a finding.

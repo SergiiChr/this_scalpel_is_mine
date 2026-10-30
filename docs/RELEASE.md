@@ -25,7 +25,9 @@ accepts reach `main` with the next release.
 2. Make the change. Run `./build.py lint` and whatever else the change needs.
 3. Run the affected and newly added tests (`./build.py test --tag ... --case ...`). They check the frame budget too.
 4. Run `./build.py test` (smoke) or `--all` (full regression) locally only for a wide core change that can break
-   unrelated modules. Otherwise CI covers them.
+   unrelated modules. Otherwise CI covers them. When suites fail, fix each and check the fix on that suite alone
+   (`--tag`, `--case`); then the same command with `--resume` runs only the suites the last run didn't pass. Run it
+   whole again only when a fix was itself a wide change.
 5. For a user-visible change, take the key frames of its suites and check them against the baseline:
    `./build.py test --tag ... --with-key-frames`, then `./build.py screenshot_review --focused`. Review the sheets in
    `build/review/report.md` (follow [review-key-frames](../.claude/skills/review-key-frames/SKILL.md)). The comparison

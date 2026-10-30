@@ -232,7 +232,7 @@ public partial class SurgeryDriver {
         }
         Note($"drew {syringe.Ml:0.0} ml and {syringe.Air:0.0} ml of air (needle in {into})");
         await NeedleOut();
-        var holds = route is Route.Vein or Route.Arm && await PlayerHoldsThrashingForearm();
+        var holds = route is Route.Vein or Route.Arm && await PlayerHoldsForearm();
         var target = route switch {
             Route.Drip => Surgery.Tools.DripBag()!.Middle(),
             Route.Vein => VeinPoint(),
@@ -271,12 +271,12 @@ public partial class SurgeryDriver {
         await PlayerPutsDown();
     }
 
-    /// <summary>A patient thrashing about (awake, in pain or panicking) has the forearm held still with the free hand,
-    /// by the wrist, so a needle can go in beside its vein. False when the patient lies still or no hand is free.
-    /// </summary>
-    private async Task<bool> PlayerHoldsThrashingForearm() {
+    /// <summary>An awake patient (whose arm shifts as they flinch and tense up, let alone thrash about) has the forearm
+    /// held still with the free hand, by the wrist, so a needle or catheter goes in where its vein is. False when the
+    /// patient is asleep, another surgeon holds them still already or no hand is free.</summary>
+    public async Task<bool> PlayerHoldsForearm() {
         var other = 1 - Me.Active;
-        if (!Thrashes || Me.HeldTool(other) is not null) {
+        if (!Patient.Vitals.IsAwake || Me.HeldTool(other) is not null || AnotherHoldsPatient) {
             return false;
         }
         // Where the arm lies on the table, not where it has jerked to: the hand presses it back down there.
@@ -336,7 +336,7 @@ public partial class SurgeryDriver {
 
     /// <summary>The free hand lets go of the patient if it still holds them (walking away lets go on its own).
     /// </summary>
-    private async Task PlayerLetsGoWithFreeHand() {
+    public async Task PlayerLetsGoWithFreeHand() {
         var other = 1 - Me.Active;
         if (!Me.HoldsPatient(other)) {
             return;
@@ -345,6 +345,10 @@ public partial class SurgeryDriver {
         await PlayerLetsGoOfPatient();
         await SwitchTo(1 - other);
     }
+
+    /// <summary>Another surgeon at the table holds the patient with either hand: in a network game too, where the
+    /// hold is theirs and only their hands' pressed bone comes across.</summary>
+    public bool AnotherHoldsPatient => Surgery.Surgeons.Values.Any(other => other != Me && other.Hands.Any(hand => hand.PressBone.Length > 0));
 
     /// <summary>An awake patient in pain or panicking jerks their arms.</summary>
     private bool Thrashes => Patient.Vitals.IsAwake && Mathf.Max(Patient.Vitals.Pain, Patient.Vitals.Panic) > 0.4f;
@@ -445,6 +449,7 @@ public partial class SurgeryDriver {
     public async Task PlayerPutsCatheterIn(SurgicalTool catheter) {
         var hand = Me.Hands[Me.Active];
         await PlayerWalksTo(VeinPoint());
+        var holds = await PlayerHoldsForearm();
         // Following the vein (an awake patient's arm shifts as they flinch and tense up), and pushing in once the tip
         // is over it, still following it while the catheter goes in.
         for (var i = 0; i < 240 && Patient.CanSetIv(Surgery.Room.IvLine.Catheter == catheter); i++) {
@@ -457,6 +462,9 @@ public partial class SurgeryDriver {
         Use(false);
         await Frames.Physics(10);
         Note($"IV in: {Patient.IvSet}, in the vein: {Patient.IvInVein}, on the line: {Patient.IvConnected}");
+        if (holds) {
+            await PlayerLetsGoWithFreeHand();
+        }
         await PlayerPutsDown();
     }
 

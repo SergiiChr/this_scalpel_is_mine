@@ -45,8 +45,9 @@ Installation details and platform prerequisites: [README.md](README.md#develop).
 - Wait for the test or script to finish before checking its results.
 
 Test commands exit non-zero and name what failed: a failed case, any `SCRIPT ERROR`, `ERROR:` or unhandled
-exception in Godot's output, or no cases run. A clean exit is a pass. A run stops at its first failed suite and stops
-the processes still running; nothing runs again.
+exception in Godot's output, or no cases run. A clean exit is a pass. A run goes on past a failed suite, printing its
+failures as it ends; nothing runs again. `--resume` with the same command runs only the suites the last run didn't pass
+(see Development in docs/RELEASE.md).
 Suites with no runnable cases selected are reported as skipped, including suites whose only cases are excluded as
 broken.
 If runnable cases are selected but their test process executes none, the suite fails. If the entire selection executes

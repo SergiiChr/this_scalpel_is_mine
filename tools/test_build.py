@@ -167,29 +167,33 @@ class CoverageReportingTest(unittest.TestCase):
         result = self.result('<testsuite><testcase classname="S" name="Slow" time="62" /></testsuite>')
         self.assertEqual(result.failures, ["[ERROR] S Slow took 62 s, longer than 60 s."])
 
-    def test_the_run_stops_at_the_first_failed_suite(self) -> None:
+    def test_the_run_goes_on_past_a_failed_suite(self) -> None:
         self.suite.cases = [build.Case("Fails", [], "", [])]
         later = build.Suite(Path("LaterTest.cs"), "Scalpel.Tests.Later", [], [], False, [build.Case("Runs", [], "", [])])
         failed = self.result('<testsuite><testcase classname="S" name="Fails"><failure message="gap missing" /></testcase></testsuite>')
         with patch.object(build, "setup"), patch.object(build, "discover", return_value=[self.suite, later]):
-            with patch.object(build, "run_process", return_value=failed) as process:
+            with patch.object(build, "run_process", side_effect=[failed, self.passed]) as process:
                 with contextlib.redirect_stdout(io.StringIO()) as output:
                     status = build.test(["--all", "--jobs", "1"])
         self.assertEqual(status, 1)
-        self.assertEqual(process.call_count, 1)
-        self.assertIn("0 passed, 1 failed, 0 skipped, 0 pending, 1 not run", output.getvalue())
+        self.assertEqual(process.call_count, 2)
+        self.assertIn("1 passed, 1 failed, 0 skipped, 0 pending", output.getvalue())
 
-    def test_stopping_early_stops_the_running_processes(self) -> None:
-        child = subprocess.Popen(["sleep", "30"], start_new_session=True)
-        self.addCleanup(child.kill)
-        build.RUNNING.add(child)
-        self.addCleanup(build.RUNNING.discard, child)
-        process = build.Process(self.suite, "Example", "filter", 1, False)
-        with patch.object(build, "run_process", return_value=self.passed):
-            running = build.run_all([process], self.options)
-            next(running)
-            running.close()
-        self.assertEqual(child.wait(timeout=5), -15)
+    def test_a_resumed_run_leaves_out_what_passed_last_time(self) -> None:
+        self.suite.cases = [build.Case("Runs", [], "", [])]
+        later = build.Suite(Path("LaterTest.cs"), "Scalpel.Tests.Later", [], [], False, [build.Case("Fails", [], "", [])])
+        failed = self.result('<testsuite><testcase classname="S" name="Fails"><failure message="gap missing" /></testcase></testsuite>')
+        with patch.object(build, "setup"), patch.object(build, "discover", return_value=[self.suite, later]):
+            with patch.object(build, "LAST_RUN", self.root / "last-run.json"), contextlib.redirect_stdout(io.StringIO()) as output:
+                with patch.object(build, "run_process", side_effect=[self.passed, failed]):
+                    self.assertEqual(build.test(["--all", "--jobs", "1"]), 1)
+                with patch.object(build, "run_process", return_value=self.passed) as process:
+                    self.assertEqual(build.test(["--all", "--jobs", "1", "--resume"]), 0)
+                    self.assertEqual(build.test(["--all", "--jobs", "1", "--resume"]), 0)
+        # Only the suite that failed ran again; then nothing was left.
+        self.assertEqual(process.call_count, 1)
+        self.assertIn("1 passed, 0 failed, 0 skipped, 0 pending, 1 passed in the last run", output.getvalue())
+        self.assertIn("Every suite passed in the last run (2).", output.getvalue())
 
     def test_passing_cases_fail_when_godot_never_quits(self) -> None:
         result = self.result("<testsuite><testcase /></testsuite>", "Rebuild Godot Project ends with exit code: 0", 1)
@@ -282,7 +286,7 @@ class CoverageReportingTest(unittest.TestCase):
         with patch.object(build, "setup"), patch.object(build, "discover", return_value=[self.suite]):
             for arguments in (["--all"], [], ["--tag", "smoke"], ["--case", "Runs"], ["--case", "Runs", "--ci-run"]):
                 with (
-                    patch.object(build, "run_suites", return_value=(outcome for outcome in list[build.Outcome]())) as run_suites,
+                    patch.object(build, "run_suites", return_value=iter([])) as run_suites,
                     contextlib.redirect_stdout(io.StringIO()),
                 ):
                     with contextlib.redirect_stderr(io.StringIO()):
@@ -383,8 +387,7 @@ class CoverageReportingTest(unittest.TestCase):
     def test_functional_visual_suite_is_headless_even_with_inherited_capture_flag(self) -> None:
         self.suite.categories = ["visual_confirmation"]
         with patch.dict(os.environ, {"WITH_KEY_FRAMES": "1"}), patch.object(build, "dotnet", return_value="dotnet"):
-            with patch("build.subprocess.Popen") as process:
-                process.return_value.wait.return_value = 0
+            with patch("build.subprocess.run", return_value=subprocess.CompletedProcess([], 0)) as process:
                 with patch.object(build, "problems", return_value=build.ProcessResult([], 1)):
                     build.run_process(self.suite, self.options, "Example", "filter", 1)
         self.assertEqual(process.call_args.args[0][0], "dotnet")
@@ -397,8 +400,7 @@ class CoverageReportingTest(unittest.TestCase):
         self.suite.categories = ["visual_confirmation"]
         self.options.key_frames = True
         with patch.object(build, "has_display", return_value=display), patch.object(build, "dotnet", return_value="dotnet"):
-            with patch("build.subprocess.Popen") as process:
-                process.return_value.wait.return_value = 0
+            with patch("build.subprocess.run", return_value=subprocess.CompletedProcess([], 0)) as process:
                 with patch.object(build, "problems", return_value=build.ProcessResult([], 1)), patch("build.shutil.which", return_value="xvfb-run"):
                     build.run_process(self.suite, self.options, "Example", "filter", 1)
         return process

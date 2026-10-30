@@ -221,8 +221,7 @@ def report(current_root: Path, baseline_root: Path, out: Path, everything: bool,
         "",
         {
             "passed": "Regression: passed.",
-            "failed": "Regression: FAILED, stopped at the first failed suite (the run's output names it). The suites it "
-            "didn't run show their key frames as missing below; it can't become the baseline.",
+            "failed": "Regression: FAILED (the run's output names the suites); it can't become the baseline.",
             "not-run": "Regression: not run, these are the key frames of an earlier run.",
             "focused": "Focused run: only the folders it took key frames in are compared, and only missing key frames fail it.",
         }[regression],

@@ -173,7 +173,8 @@ public partial class SurgeryDriver {
         await PlayerReaches(point);
         Tap(InputActions.UseTool);
         await PlayerInput.Delivered();
-        AssertBool(Me.HoldsPatient(Me.Active))
+        // In a network game the host takes the hold up and sends it back.
+        AssertBool(await Frames.Until(() => Me.HoldsPatient(Me.Active), 1f))
             .OverrideFailureMessage($"the empty hand clicked on the patient holds it\n{Recent()}").IsTrue();
         Note("holds the patient");
     }

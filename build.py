@@ -35,18 +35,16 @@ own Godot .NET binary of the same version instead.
 from __future__ import annotations
 
 import argparse
-import contextlib
 import functools
 import itertools
+import json
 import os
 import re
 import shlex
 import shutil
-import signal
 import subprocess
 import sys
 import tempfile
-import threading
 import time
 import urllib.request
 import xml.etree.ElementTree as ElementTree
@@ -77,6 +75,8 @@ ASSEMBLY = ROOT / ".godot/mono/temp/bin/Debug/ThisScalpelIsMine.dll"
 RUNNER_CLASS = ROOT / "gdunit4_testadapter_v5/GdUnit4TestRunnerScene.cs"
 # Runs a test process on an X server of its own on the desktop, drawn by the GPU (see the script).
 GPU_DISPLAY = ROOT / "tools/with_gpu_display.sh"
+# The suites the last test run passed, with the options it ran with (see test --resume).
+LAST_RUN = BUILD / "test-results" / "last-run.json"
 # Godot as test processes run it: without the adapter's editor pass (see the script), as setup() built and imported.
 TEST_GODOT = ROOT / "tools/godot_for_tests.sh"
 # A Godot step or test fails on any of these in its output, as well as on its own exit code or assertions.
@@ -546,13 +546,6 @@ class ProcessResult:
     executed: int = 0
 
 
-# The test processes running now, each in a process group of its own with the Godot it started: stopped all at once
-# when a run stops at its first failure (run_all()).
-RUNNING: set[subprocess.Popen[bytes]] = set()
-STOPPING = threading.Event()
-STARTING = threading.Lock()
-
-
 def godot_log(name: str) -> Path:
     """Where the Godot of the test process called name writes its output."""
     return BUILD / "test-logs" / f"{name}.godot.log"
@@ -596,13 +589,7 @@ def run_process(suite: Suite, options: TestOptions, name: str, test_filter: str,
         environment["TMPDIR"] = temp
         # Godot's user:// (saves, settings, played games) under it too: tests never touch the player's own.
         environment["XDG_DATA_HOME"] = temp
-        with STARTING:
-            if STOPPING.is_set():
-                return ProcessResult([])
-            process = subprocess.Popen(command, stdout=out, stderr=subprocess.STDOUT, env=environment, start_new_session=True)
-            RUNNING.add(process)
-        status = process.wait()
-        RUNNING.discard(process)
+        status = subprocess.run(command, stdout=out, stderr=subprocess.STDOUT, env=environment, check=False).returncode
     return problems(log, report, status, suite.timeout)
 
 
@@ -730,26 +717,14 @@ def run_all(queue: list[Process], options: TestOptions) -> Generator[tuple[Proce
     if queue and not RUNNER_CLASS.exists():
         queue[0] = replace(queue[0], exclusive=True)
     running: dict[Future[ProcessResult], Process] = {}
-    try:
-        with ThreadPoolExecutor(options.capacity) as pool:
-            try:
-                while queue or running:
-                    while queue and fits(queue[0], list(running.values()), options.capacity):
-                        process = queue.pop(0)
-                        running[pool.submit(process.run, options)] = process
-                    done, _ = wait(running, return_when=FIRST_COMPLETED)
-                    for future in done:
-                        yield running.pop(future), future.result()
-            finally:
-                # Left before the end (the run stops at its first failure): the processes still running are stopped,
-                # those submitted but not yet started never start.
-                with STARTING:
-                    STOPPING.set()
-                    for child in RUNNING:
-                        with contextlib.suppress(ProcessLookupError):
-                            os.killpg(child.pid, signal.SIGTERM)
-    finally:
-        STOPPING.clear()
+    with ThreadPoolExecutor(options.capacity) as pool:
+        while queue or running:
+            while queue and fits(queue[0], list(running.values()), options.capacity):
+                process = queue.pop(0)
+                running[pool.submit(process.run, options)] = process
+            done, _ = wait(running, return_when=FIRST_COMPLETED)
+            for future in done:
+                yield running.pop(future), future.result()
 
 
 def fits(process: Process, running: Sequence[Process], capacity: int) -> bool:
@@ -770,12 +745,10 @@ def run_suites(suites: Sequence[Suite], options: TestOptions) -> Generator[Outco
     alone = sum(process.exclusive for group in todo.values() for process in group)
     count = sum(len(group) for group in todo.values())
     print(f"Running {len(suites)} test suites in {count} test processes: {alone} alone, then {options.capacity} at a time.", flush=True)
-    # Closed with this generator, when the caller stops early: that stops the processes still running.
-    with contextlib.closing(run_all([process for group in todo.values() for process in group], options)) as finished:
-        for process, result in finished:
-            results[process.suite.full_name].append(result)
-            if len(results[process.suite.full_name]) == len(todo[process.suite.full_name]):
-                yield gather(process.suite, results[process.suite.full_name])
+    for process, result in run_all([process for group in todo.values() for process in group], options):
+        results[process.suite.full_name].append(result)
+        if len(results[process.suite.full_name]) == len(todo[process.suite.full_name]):
+            yield gather(process.suite, results[process.suite.full_name])
 
 
 def add(outcome: Outcome, result: ProcessResult) -> None:
@@ -812,8 +785,8 @@ def test(arguments: list[str]) -> int:
         prog="./build.py test",
         description="Runs GdUnit4 test suites under tests/. A suite fails on a failed case, a case over its time limit, "
         "any SCRIPT ERROR, ERROR: or unhandled exception in Godot's output, or no selected cases executed. "
-        "Suites with no runnable cases selected are skipped. The run stops at the first failed suite, its other running "
-        "processes stopped. Exits non-zero on any failure or if the entire run executes no cases.",
+        "Suites with no runnable cases selected are skipped. Each suite's failures show as it ends; nothing runs again. "
+        "Exits non-zero on any failure or if the entire run executes no cases.",
     )
     parser.add_argument("--all", action="store_true", help="every suite; without it or --tag, the smoke tag")
     parser.add_argument("--tag", action="append", default=[], help="suites with all of these categories")
@@ -836,6 +809,12 @@ def test(arguments: list[str]) -> int:
         "the 16 ms budget instead of the game's own work against the CPU budget",
     )
     parser.add_argument("--list", action="store_true", help="show what would run")
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="leave out the suites that passed in the last run with the same options: after fixing what failed, only "
+        "the suites that didn't pass run again; with key frames, the last run's are kept",
+    )
     parsed = parser.parse_args(arguments)
     if parsed.render_budget and (parsed.with_key_frames or parsed.ci_run):
         parser.error("--render-budget times frames on a real GPU: not with --with-key-frames or --ci-run")
@@ -855,29 +834,34 @@ def test(arguments: list[str]) -> int:
         run_broken=os.environ.get("RUN_BROKEN") == "1",
     )
     suites = selected(discover(), options)
+    # What the last run with these options passed: a resumed run leaves those suites out and keeps their key frames.
+    selection = sorted(argument for argument in arguments if argument != "--resume")
+    last = json.loads(LAST_RUN.read_text()) if LAST_RUN.exists() else {}
+    passed_before = set(last.get("passed", [])) if parsed.resume and last.get("selection") == selection else set()
+    suites = [suite for suite in suites if suite.full_name not in passed_before]
     if parsed.list:
         for suite in suites:
             print(f"{suite.full_name}  [{', '.join(suite.categories)}]")
         return 0
+    if not suites and passed_before:
+        print(f"Every suite passed in the last run ({len(passed_before)}).")
+        return 0
     if not suites:
         print(f"No tests match tags {options.tags} and case '{options.case}'.", file=sys.stderr)
         return 2
-    if options.key_frames:
+    if options.key_frames and not passed_before:
         # Key frames of an earlier run would pass for this one's.
         shutil.rmtree(KEY_FRAMES, ignore_errors=True)
     setup()
     for folder in ("test-logs", "test-results"):
         (BUILD / folder).mkdir(parents=True, exist_ok=True)
     outcomes: list[Outcome] = []
-    with contextlib.closing(run_suites(suites, options)) as finished:
-        for outcome in finished:
-            print(report(outcome), flush=True)
-            if options.ci_run and outcome.failures:
-                print(log_tail(outcome), flush=True)
-            outcomes.append(outcome)
-            if outcome.failures:
-                # Leaving stops the processes still running (run_all()): their suites count as not run.
-                break
+    for outcome in run_suites(suites, options):
+        # Each suite's failures show as soon as it ends; the run goes on with the rest.
+        print(report(outcome), flush=True)
+        if options.ci_run and outcome.failures:
+            print(log_tail(outcome), flush=True)
+        outcomes.append(outcome)
     pending = [
         (f"{suite.full_name}.{name}", description)
         for suite in suites
@@ -889,9 +873,11 @@ def test(arguments: list[str]) -> int:
         print(f"pending {name}: {description}")
     failed = sum(1 for outcome in outcomes if outcome.failures)
     skipped = sum(1 for outcome in outcomes if not outcome.failures and not outcome.executed)
-    stopped = f", {len(suites) - len(outcomes)} not run (stopped at the first failure)" if failed else ""
-    print(f"{len(outcomes) - failed - skipped} passed, {failed} failed, {skipped} skipped, {len(pending)} pending{stopped}.")
-    if not any(outcome.executed for outcome in outcomes):
+    earlier = f", {len(passed_before)} passed in the last run" if passed_before else ""
+    print(f"{len(outcomes) - failed - skipped} passed, {failed} failed, {skipped} skipped, {len(pending)} pending{earlier}.")
+    passed_now = passed_before | {outcome.suite.full_name for outcome in outcomes if not outcome.failures}
+    LAST_RUN.write_text(json.dumps({"selection": selection, "passed": sorted(passed_now)}, indent=2) + "\n")
+    if not any(outcome.executed for outcome in outcomes) and not passed_before:
         print("[ERROR] No test cases ran.", file=sys.stderr)
         return 1
     # Only a full regression that passed may become the baseline: not a focused run, nor one with broken cases.
