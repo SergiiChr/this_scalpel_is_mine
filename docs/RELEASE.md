@@ -30,7 +30,7 @@ The key frames a release review accepts reach `main` with the next release.
 5. For a user-visible change, review the key frames of its suites with
    [review-key-frames](../.claude/skills/review-key-frames/SKILL.md) and commit the accepted ones with the change.
    Changed and new ones are the evidence for the handoff. Removed key frames go at release.
-6. Follow [self-review](../.claude/skills/self-review/SKILL.md), then rerun the checks above for what it changed.
+6. Run the `self-review` skill, then rerun the checks above for what it changed.
 7. Raise a PR to `develop` (see [PR description](../AGENTS.md#pr-description)).
 8. Hand over a summary of the change and its evidence, with the self-review summary and, for a visual change, the
    reviewed sheets, as a prompt that asks for the merge decision.
