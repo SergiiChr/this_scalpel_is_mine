@@ -26,6 +26,22 @@ public class ScalpelTest {
     }
 
     [TestCase]
+    public async Task AShakyHandHoldingTheBladeDownCutsOneUnbrokenLine() {
+        FrameBudget.RenderingOff();
+        var driver = SurgeryDriver.Create();
+        await driver.Start("skin_lab");
+        SurgeryState.PatientIsAsleep(driver.Patient);
+        var (from, to) = (new Vector2(0.3f, 0.5f), new Vector2(0.7f, 0.5f));
+        await driver.PlayerCutsSkin(from, to, 3, shake: 0.003f);
+        var cuts = driver.Patient.Wounds.Count(wound => wound.MadeBySurgeon && wound.Kind == WoundKind.Cut);
+        var bridges = Enumerable.Range(2, 17).Select(i => from.Lerp(to, i / 20f)).Count(uv => !driver.Body.Tissue.IsOpen(uv, TissueDepth.Skin));
+        AssertBool(cuts == 1 && bridges == 0)
+            .OverrideFailureMessage($"held down all the way, a wavering blade leaves one cut ({cuts}) with no skin left across it ({bridges} of 17 spots)").IsTrue();
+        await driver.Stop();
+        RenderingServer.RenderLoopEnabled = true;
+    }
+
+    [TestCase]
     public async Task ScalpelPickupFiveCentimeterCutAndTableDrop() {
         FrameBudget.RenderingOff();
         var driver = SurgeryDriver.Create();

@@ -3,6 +3,10 @@ namespace Scalpel.Tools;
 /// <summary>A blade: pressed in at a depth level it stabs as wide as itself, moved along its edge it cuts what it
 /// passes through, dragged sideways it only drags.</summary>
 public sealed class CutAction : ToolAction {
+    /// <summary>How far (meters) the blade goes off its edge line before that's a drag, not a hand wavering: until then
+    /// it's the way it has come in all since it last cut that counts.</summary>
+    private const float Waver = 0.015f;
+
     public override void Apply(ToolStep step) {
         var tool = step.Tool;
         var use = tool.Use;
@@ -83,6 +87,8 @@ public sealed class CutAction : ToolAction {
                 use.CutWall = use.CutWall || step.Zone == SiteZone.Site;
                 patient.DebrideAt(step.Uv);
                 step.Surgery.Sound(level >= 3 ? "cut_deep" : "cut_skin", step.Tip);
+            } else if (!aligned && along.Length() < Waver) {
+                moved = false;
             } else if (!aligned) {
                 // Dragged sideways: the next stroke starts here.
                 // Lowering or tilting can move the footprint sideways without being a sideways drag.

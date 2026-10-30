@@ -55,8 +55,10 @@ public partial class SurgeryDriver {
     /// <summary>One stroke of a blade (the scalpel unless <paramref name="toolId"/> says) from <paramref name="from"/>
     /// to <paramref name="to"/> (site uv) at depth <paramref name="level"/> (1 through the skin, 3 through the muscle):
     /// the surgeon stands by the line, turns the edge along it, presses in and draws it slowly enough for a clean cut.
-    /// The blade stays in hand.</summary>
-    public async Task PlayerCutsSkin(Vector2 from, Vector2 to, int level, string toolId = "scalpel", float speed = Slow) {
+    /// The blade stays in hand. With a <paramref name="shake"/>, the hand wanders that far (meters) to each side of the
+    /// line as it goes, every 5 mm.</summary>
+    public async Task PlayerCutsSkin(Vector2 from, Vector2 to, int level, string toolId = "scalpel", float speed = Slow,
+        float shake = 0f) {
         var tool = (await PlayerRequestsItem(toolId))!;
         var start = SitePoint(from);
         var finish = SitePoint(to);
@@ -80,7 +82,17 @@ public partial class SurgeryDriver {
         await PlayerAims(new Vector2(0f, (tilt + EntryTilt) / (Surgeon.AimSensitivity * Settings.MouseSensitivity)), 1);
         PlayerLetsGoOfAim();
         await PlayerTurnsBlade(finish - start);
-        await PlayerWorksAlong([start, finish], level, speed);
+        await PlayerWorksAlong(shake > 0f ? Shaken(start, finish, shake) : [start, finish], level, speed);
+    }
+
+    private static List<Vector3> Shaken(Vector3 start, Vector3 finish, float shake) {
+        const float Step = 0.005f;
+        var way = (finish - start).Normalized();
+        var side = way.Cross(Vector3.Up).Normalized();
+        var steps = (int)(start.DistanceTo(finish) / Step);
+        var points = Enumerable.Range(0, steps).Select(i => start + way * (Step * i) + side * (i % 2 == 0 ? 0f : shake * (i % 4 == 1 ? 1f : -1f))).ToList();
+        points.Add(finish);
+        return points;
     }
 
     private Vector3 BladeFacing(Vector3 start, Vector3 finish, Vector3 standing) {
