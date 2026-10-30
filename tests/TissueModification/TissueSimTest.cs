@@ -29,8 +29,7 @@ public class TissueSimTest {
         CutEndFollowsFineStroke();
         RetractionOnASlope();
         DepthLayers();
-        RetractionAndTears();
-        ThinSkinHoldsAtRest();
+        RetractionWidens();
         StitchesClose();
         Sleeps();
         CatchUpAcrossFrames();
@@ -40,7 +39,6 @@ public class TissueSimTest {
         MuscleFirst();
         LooseStitchGapes();
         RunningThreadTightensTogether();
-        ExactSnaps();
         DeformedSurface();
         RestsOnCurvedBody();
         StaysOnBody();
@@ -48,9 +46,9 @@ public class TissueSimTest {
         PieceComesOff();
     }
 
-    /// <summary>A flat site that tears on its own (as the host's does).</summary>
+    /// <summary>A flat site.</summary>
     private static TissueSim Sim() {
-        var sim = new TissueSim { Tearing = true };
+        var sim = new TissueSim();
         sim.Build(Size, _ => 0f);
         return sim;
     }
@@ -81,7 +79,6 @@ public class TissueSimTest {
 
     private static void FoldFootprintExpires() {
         var sim = Sim();
-        sim.Tearing = false;
         sim.Grip(1, Mid);
         var k = sim.Nearest(Mid);
         sim.MoveGrip(1, sim.Settled[k] + new Vector3(0.045f, 0.018f, 0f));
@@ -202,7 +199,6 @@ public class TissueSimTest {
         Settle(sim);
         Check(sim.GapAt(Mid) > TissueSim.OpenGap, $"a full depth cut gapes on its own (gap {sim.GapAt(Mid):0.0000})");
         Check(sim.IsOpen(Mid), "a full depth cut opens into the cavity");
-        Check(sim.Snapped.Count == 0, "skin tension alone doesn't tear anything");
     }
 
     private static void DepthLayers() {
@@ -228,7 +224,7 @@ public class TissueSimTest {
         Check(raised < 0.001f, $"retracting diagonal lips stay within 1 mm of sloping skin ({raised * 1000f:0.00} mm)");
     }
 
-    private static void RetractionAndTears() {
+    private static void RetractionWidens() {
         var sim = Sim();
         sim.Cut(CutFrom, CutTo, TissueDepth.Muscle);
         Settle(sim);
@@ -238,32 +234,12 @@ public class TissueSimTest {
         sim.MoveGrip(1, sim.Rest[sim.Nearest(edge)] + new Vector3(0f, 0.005f, -0.02f));
         Settle(sim);
         Check(sim.GapAt(Mid) > resting + 0.005f, "pulling an edge 2 cm widens the gap");
-        Check(sim.Snapped.Count == 0, "a 2 cm pull doesn't tear");
-        sim.MoveGrip(1, sim.Rest[sim.Nearest(edge)] + new Vector3(0f, 0.005f, -0.08f));
-        // A grip draws its skin a millimeter a step.
-        Settle(sim, 120);
-        Check(sim.Snapped.Count > 0, "an 8 cm pull tears");
-        sim.Release(1);
-        var tissue = Sim();
-        tissue.Tearing = false;
-        tissue.Grip(1, edge);
-        tissue.MoveGrip(1, tissue.Rest[tissue.Nearest(edge)] + new Vector3(0f, 0.005f, -0.08f));
-        Settle(tissue);
-        Check(tissue.Snapped.Count == 0, "clients (tearing off) never snap springs themselves");
-    }
-
-    private static void ThinSkinHoldsAtRest() {
-        var sim = Sim();
-        sim.BreakMult = 0.5f;
-        sim.Cut(CutFrom, CutTo, TissueDepth.Muscle);
-        Settle(sim, 120);
-        Check(sim.Snapped.Count == 0, "thin skin (tear threshold x0.5) doesn't tear from its own tension");
     }
 
     /// <summary>Stitches every centimeter along the cut across the middle, at <paramref name="tension"/>.</summary>
     private static void StitchAlong(TissueSim sim, float tension) {
         for (var u = 0.2f; u <= 0.8f; u += 0.01f) {
-            sim.Stitch(new Vector2(u, 0.51f), tension, 2.2f);
+            sim.Stitch(new Vector2(u, 0.51f), tension);
         }
     }
 
@@ -293,7 +269,7 @@ public class TissueSimTest {
         Check(!sim.IsSleeping, "a jolt wakes the sim");
     }
 
-    /// <summary>Skin is elastic: a slow 5 cm pull on intact skin drags the skin around it along without tearing, and
+    /// <summary>Skin is elastic: a slow 5 cm pull on intact skin drags the skin around it along, and
     /// all of the moved skin is shown simulated (inside the region).</summary>
     private static void Elastic() {
         var sim = Sim();
@@ -305,7 +281,6 @@ public class TissueSimTest {
             sim.Substep();
         }
         Settle(sim);
-        Check(sim.Snapped.Count == 0, "a slow 5 cm pull on intact skin doesn't tear it");
         // 4 cm behind the grip, against the pull.
         var behind = k - Mathf.RoundToInt(0.04f / (Size.X / sim.ResX));
         var moved = sim.Pos[behind].DistanceTo(sim.Rest[behind]);
@@ -371,12 +346,12 @@ public class TissueSimTest {
         Settle(sim);
         const int Id = 77;
         var springsBefore = sim.SpringCount;
-        Check(sim.ThreadAnchor(Id, new Vector2(0.35f, 0.46f), TissueDepth.Skin, 1.25f, 1.8f, 1f),
+        Check(sim.ThreadAnchor(Id, new Vector2(0.35f, 0.46f), TissueDepth.Skin, 1.25f, 1f),
             "the first click creates a running-thread anchor");
         Check(sim.SpringCount == springsBefore, "the first anchor has no disconnected stitch bar");
-        Check(sim.ThreadAnchor(Id, new Vector2(0.42f, 0.56f), TissueDepth.Skin, 1.25f, 1.8f, 1f),
+        Check(sim.ThreadAnchor(Id, new Vector2(0.42f, 0.56f), TissueDepth.Skin, 1.25f, 1f),
             "the second click routes thread to the next hole");
-        Check(sim.ThreadAnchor(Id, new Vector2(0.50f, 0.46f), TissueDepth.Skin, 1.25f, 1.8f, 1f),
+        Check(sim.ThreadAnchor(Id, new Vector2(0.50f, 0.46f), TissueDepth.Skin, 1.25f, 1f),
             "a third click continues the same thread");
         Settle(sim);
         var looseGap = sim.GapAt(new Vector2(0.42f, 0.51f));
@@ -392,29 +367,8 @@ public class TissueSimTest {
         sim.SnapThread(Id);
         Check(info.Springs.Count == 2 && info.Springs.All(s => !sim.SpringAt(s).Active),
             "a thread torn through lets go of every span");
-        Check(!sim.ThreadAnchor(Id, new Vector2(0.58f, 0.56f), TissueDepth.Skin, 1.25f, 1.8f, 1f),
+        Check(!sim.ThreadAnchor(Id, new Vector2(0.58f, 0.56f), TissueDepth.Skin, 1.25f, 1f),
             "a torn thread takes no more holes");
-    }
-
-    /// <summary>A client mirrors the host's tears spring by spring, diagonals included, and ends with identical
-    /// topology.</summary>
-    private static void ExactSnaps() {
-        var host = Sim();
-        var client = Sim();
-        client.Tearing = false;
-        foreach (var sim in (TissueSim[])[host, client]) {
-            sim.Cut(new Vector2(0.2f, 0.3f), new Vector2(0.8f, 0.7f), TissueDepth.Fat);
-            sim.Stitch(new Vector2(0.5f, 0.5f), 1f, 1.05f);
-        }
-        var edge = new Vector2(0.45f, 0.55f);
-        host.Grip(1, edge);
-        host.MoveGrip(1, host.Rest[host.Nearest(edge)] + new Vector3(-0.03f, 0.01f, 0.06f));
-        Settle(host);
-        Check(host.Snapped.Count > 0, "a hard diagonal pull tears springs");
-        foreach (var entry in host.Snapped) {
-            client.SnapSpring(entry.Spring);
-        }
-        Check(client.TopologyHash() == host.TopologyHash(), "the client's torn springs match the host's exactly");
     }
 
     /// <summary>Contact follows the skin as it's deformed: lifted by a grip it's higher, over an opening there's no
@@ -454,7 +408,7 @@ public class TissueSimTest {
     /// <summary>Where the site hangs off the body (here past uv.x 0.8), the skin is never drawn and never shown
     /// simulated, whatever is cut or pulled next to it.</summary>
     private static void StaysOnBody() {
-        var sim = new TissueSim { Tearing = true };
+        var sim = new TissueSim();
         sim.Build(Size, _ => 0f, uv => uv.X <= 0.8f);
         sim.Cut(new Vector2(0.1f, 0.51f), new Vector2(0.95f, 0.51f), TissueDepth.Muscle);
         var edge = new Vector2(0.75f, 0.46f);

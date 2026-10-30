@@ -50,8 +50,6 @@ public class PulledSkinTest {
         var driver = session.Driver;
         var body = driver.Body;
         var tissue = body.Tissue;
-        // Tearing is covered in TissueSimTest. Here an intact sheet must stay a valid sheet.
-        tissue.Tearing = false;
         var quietRim = new[] { new Vector2(0.1f, 0.1f), new Vector2(0.9f, 0.1f), new Vector2(0.1f, 0.9f), new Vector2(0.9f, 0.9f) }
             .Select(at => tissue.Nearest(at)).Select(index => (Index: index, Point: body.LayerPoint(0, index))).ToArray();
         driver.Note("making the full-depth incision");

@@ -156,13 +156,6 @@ internal sealed partial class GameplaySweep {
         if (wound.Closure > 0f) {
             Fail($"the skin closed over open muscle (closure {wound.Closure:0.00})");
         }
-        var tears = Patient.Flags.GetValueOrDefault("tears");
-        for (var i = 0; i < 20; i++) {
-            Patient.CloseAt(wound.Midpoint, clips, 0.1f, 1f, TightClips);
-        }
-        if (Patient.Flags.GetValueOrDefault("tears") <= tears) {
-            Fail("tight clips over open muscle didn't tear");
-        }
         CloseEveryBin(uv => Patient.CloseMuscleAt(uv, clips, 0.1f));
         if (Body.Tissue.MuscleOpenNear(wound.Midpoint, Patient.MuscleReach)) {
             Fail("sewing inside the wound didn't close the muscle");

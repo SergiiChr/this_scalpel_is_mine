@@ -441,14 +441,10 @@ public partial class Surgery : Node3D {
             Tell(peer, $"You let go of the {tool.Def.Name.ToLowerInvariant()}. It keeps its hold.");
             return;
         }
-        var anchor = hold is SkinHold skin ? skin.Anchor : Patient.Body.WorldToUv(tool.TipPosition());
-        // Torn the way it was pulled: toward the hand dragged off with the surgeon.
-        var pulled = Patient.Body.WorldToUv(tool.TipPosition()) - anchor;
-        Patient.Tear(anchor, pulled.LengthSquared() > 1e-10f ? pulled : Vector2.Right, 0.05f);
         Patient.ReleaseGrip(tool.Uid, hold, false);
         tool.Hold = null;
         SetAttached(peer, hand, false);
-        Tell(peer, "You pulled away while holding on. The tissue tore.");
+        Tell(peer, "You pulled away and lost your hold.");
     }
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]

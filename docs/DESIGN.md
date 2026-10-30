@@ -17,7 +17,7 @@ Surgery scene (scenes/surgery.tscn, src/Operation/Surgery.cs)
   Room        builds geometry, lights and stations per environment (or, ambulance, sidewalk) (src/World)
   Patient     host-authoritative simulation: vitals, wounds, drugs, targets, grips (src/Patients)
     PatientBody   mannequin, surgical site tissue layers, cavity, organs, wound map (every peer)
-      TissueSim   soft tissue sim of the site skin (every peer, tears decided by the host)
+      TissueSim   soft tissue sim of the site skin (every peer)
   Tools       ToolManager: every grabbable item, grab/release/belt requests; ToolActions and src/Tools/Actions:
               what each kind of tool does
   Surgeons    one Surgeon per player: input, hands with two-bone IK, personal gauges (src/Surgeons)
@@ -88,7 +88,7 @@ overview, the data formats designers edit and the design decisions.
   so a blade gets a hairline and furniture a full line.
 - Surgical site tissue: the skin is a separate soft layer over fat and muscle, a grid of particles joined by springs
   under tension (`TissueSim`), drawn as three layers split exactly where the blade went (`PatientBody`). Cuts gape on
-  their own, deeper ones further; grips stretch the skin over centimeters before it tears; closures count only where
+  their own, deeper ones further; grips stretch the skin over centimeters; closures count only where
   the edges actually meet. How it's simulated and drawn is documented on those classes.
 - A hand holding skin is held by it: pulled past what the skin gives (`TissueSim.GripStrain`, the longest spring at
   the held skin over its rest length) the grip stops where the skin does and the hand comes back to it
@@ -97,8 +97,8 @@ overview, the data formats designers edit and the design decisions.
   (`TissueSim.Owns()`), so one hand never freezes the other. Pulled on from there, it peels a cut's lip up off what's
   under it instead (`TissueSim.PeelLift`): the skin and its fat rise, the muscle stays down
   (`PatientBody.LayerPoint()`), so a tight wound held up shows its muscle edge for the needle.
-  A flap cut free swings as far as its hinge lets it. Skin still tears where a tool forces it (a surgeon walking away
-  holding on, a thread pulled too tight).
+  A flap cut free swings as far as its hinge lets it.
+  Skin never tears: a grip, a thread or a staple pulled too far only stops, slips or snaps.
 - Skin damage (`skin.gdshader` + `WoundMap`): two painted textures (same texel size on every site, 128-512 px) drive cut grooves, burns (red halo to charred core),
   bruises (purple to yellow), stitches, blood pooling, marker ink, iodine and grime. Fat and muscle use `tissue_layer.gdshader`.
 - Cavity blood rises as a glossy pool when bleeding inside, drops with suction.
@@ -185,7 +185,6 @@ Patient effect keys:
 | whiskey_friendly | whiskey calms without side effects |
 | pacemaker | cautery and shocks near the chest cause misfires |
 | mh_trigger | anesthetic gas causes malignant hyperthermia |
-| tear_threshold_mult | how far skin stretches before it tears |
 | bruise_mult | bruise size |
 | ticklish | awake patient flinches when touched outside the site |
 | pain_mult | pain multiplier |
@@ -307,14 +306,14 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
 ### In this draft
 
 - Two-hand control, one active at a time, idle hand frozen mid-action (controls: see Controls rework).
-- Holding tissue anchors the hand; walking away tears it.
+- Holding tissue anchors the hand; walking away loses the hold.
 - Hand bumps between surgeons. Jolts from seizures, coughs, potholes, pedestrians.
 - Cuts with depth and speed (clean vs jagged) through skin, fat and muscle, in the soft tissue sim (see Look).
 - A blade pressed in without moving goes in as wide as itself, at its depth level. Moved along its edge it cuts on, also
   past the end of an opening it's already in; inside the opening there's no wall left to cut. Drawn along a cut already
   there, it deepens that cut rather than making a second one, and opens it again where it goes: its stitches are cut,
   a clot or a cautery seal on that stretch no longer holds. Over an opening it reaches down only at full depth: there
-  it grates on a bone (which hurts through a local block) but stops short of an organ; it nicks an organ only by
+  it stops short of an organ; it nicks an organ only by
   touching it. Drawn on from cutting the belly wall or slid over from elsewhere in the opening, it passes over a
   target; put down on one, it cuts it free (an appendix's base then bleeds from its vessel).
 - Per-segment closure: sew along the whole wound. Weak closures burst under strain.
@@ -679,7 +678,7 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
   goes into the muscle instead, so a cut through the muscle is stapled twice along.
 - Staples are drawn as steel wire bridging the cut, each leg riding the tissue grid point it went in at
   (`PatientBody.AddStaple()`).
-- The office stapler has a `tear_chance` (the staple tears out, a new tear) and a `bleed_chance` (it goes through a
+- The office stapler has a `bleed_chance` (it goes through a
   vessel: the stapled cut bleeds through it, `Wound.nicked`, until cautery seals it or a clamp or pressure holds it) per
   staple. A nick is no new wound to close.
 - How closed the skin is (`Patient.SkinClosure()`) is weighed by each wound's length: a small hole left open counts
@@ -697,10 +696,8 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
 - How firmly it sticks is its grip (`Patient.Grip()`): the tape's `power` times `Patient.TapeGrip`, less on blood on
   the skin under it (`Patient.WetGrip`) and on a cut into the fat (`Patient.DeepGrip`). It pulls together only edges
   lying no further apart than that (`TissueSim.TapeLoad()`): on a deep or gaping cut, such as the forearm
-  laceration of hand stitch, it peels straight off. Once they're shut it lets go when they're pulled apart by a share
-  of its grip (`Patient.TapeHold`): a hand pulling the skin beside it, which a strip on blood doesn't survive. Blood
-  oozing from the cut under it soaks in and loosens it further (`Patient.TapeSoak`). Let go, it peels off, the cut
-  opens again and it costs points.
+  laceration of hand stitch, it peels straight off. Once they're shut it holds. Let go, it peels off, the cut opens
+  again and it costs points.
 - Gauze it goes over, lying on the skin or held over it in a hand (either surgeon's), is taped down there
   (`ToolManager.TapeDown()`): it lies flat on the body, riding the site, and keeps pressing the cut under it as gauze
   pressed by hand does for as long as the strip holds. A stretch over gauze holds the gauze, not the cut's edges under

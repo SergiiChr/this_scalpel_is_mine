@@ -2,10 +2,10 @@ tags: thin_skin
 title: Fragile skin
 [i]Thin, aged skin with little elasticity.[/i]
 
-[b]On the chart:[/b] “Fragile skin, tears easily.”
+[b]On the chart:[/b] “Fragile skin, bruises easily.”
 
 [b]Hazards[/b]
-• Tears at {quirk.thin_skin.tear_threshold_mult * 100}% of the usual traction. Bruises {quirk.thin_skin.bruise_mult} times as easily.
+• Bruises {quirk.thin_skin.bruise_mult} times as easily.
 • Tight clips cut through more often. Adhesive closures hold poorly.
 
 [b]Management[/b]

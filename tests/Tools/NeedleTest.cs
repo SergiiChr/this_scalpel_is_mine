@@ -15,8 +15,7 @@ public class NeedleTest {
     // Temporary local budget override: recorded CPU/render overruns remain measured; functional assertions still fail normally.
     private static readonly BudgetAllowance BudgetOverride = new("known to go over the frame budget, not profiled yet", 14.5f);
 
-    /// <summary>Too loose leaves a gap, too tight tears through, and skin pulled shut over open muscle tears through
-    /// too.</summary>
+    /// <summary>Too loose leaves a gap, too tight snaps the thread, and so does skin pulled shut over open muscle.</summary>
     [TestCase(Timeout = Limits.Slow)]
     public async Task ThreadTensionLimits() {
         var session = await ToolSession.Start("appendectomy", "needle/tension");
@@ -84,9 +83,7 @@ public class NeedleTest {
         AssertBool(torn.Springs.Concat(torn.Holds.Values).All(s => !tissue.SpringAt(s).Active))
             .OverrideFailureMessage("a torn thread lets go of every span and the edges it held").IsTrue();
         AssertFloat(tight.Closure).OverrideFailureMessage($"and holds the cut no more (closure {tight.Closure:0.000})").IsLess(0.01f);
-        AssertInt(patient.Wounds.Count).OverrideFailureMessage("it tears the skin").IsGreater(wounds);
-        AssertBool(driver.Surgery.Scoring.Entries.ContainsKey("suture_tear_through"))
-            .OverrideFailureMessage("a thread torn through costs points").IsTrue();
+        AssertInt(patient.Wounds.Count).OverrideFailureMessage("it leaves no new wound").IsEqual(wounds);
 
         await SurgeryDriver.Notch(false);
         AssertFloat(needle.Suture.Tension)

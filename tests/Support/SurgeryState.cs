@@ -111,17 +111,9 @@ public static class SurgeryState {
     /// <summary>As if gauze had been pressed on <paramref name="wound"/> long enough to stop it for good.</summary>
     public static void WoundIsClotted(Wound wound) => wound.Clotted = true;
 
-    /// <summary>Overstretched skin torn from <paramref name="from"/> along <paramref name="direction"/> (site uv) for
-    /// <paramref name="lengthUv"/>, down to the fat. Returns the tear.</summary>
-    public static Wound SkinIsTorn(Patient patient, Vector2 from, Vector2 direction, float lengthUv) {
-        patient.Tear(from, direction, lengthUv);
-        return patient.Wounds[^1];
-    }
-
     /// <summary>As if the whole length of <paramref name="wound"/> had been sewn shut.</summary>
     public static void WoundIsClosed(Patient patient, Wound wound) {
-        patient.Body.Tissue.StitchPath(wound.Points, Wound.BinLengthUv * 1.2f, 1f,
-            Patient.ThreadStrength[(int)TissueDepth.Skin]);
+        patient.Body.Tissue.StitchPath(wound.Points, Wound.BinLengthUv * 1.2f, 1f);
         Array.Fill(wound.Bins, 1f);
     }
 
@@ -190,7 +182,7 @@ public static class SurgeryState {
             var n = id - firstId;
             var uv = new Vector2(0.3f + (n % 4 * 0.1f), 0.3f + (n / 4 * 0.1f));
             foreach (var hole in (Vector2[])[uv, uv + new Vector2(0.035f, 0.035f)]) {
-                tissue.ThreadAnchor(id, hole, TissueDepth.Skin, TissueSim.ThreadLoose[(int)TissueDepth.Skin], 4f, 1f);
+                tissue.ThreadAnchor(id, hole, TissueDepth.Skin, TissueSim.ThreadLoose[(int)TissueDepth.Skin], 1f);
             }
             tissue.FinishThread(id);
         }
@@ -252,10 +244,9 @@ public static class SurgeryState {
         surgery.Tools.AddLiquid(bag, -bag.Ml);
     }
 
-    /// <summary>This one improvised tool tears out (<paramref name="tear"/>) or catches a vessel
-    /// (<paramref name="bleed"/>) with these chances, the same tool on the tray otherwise.</summary>
-    public static void ToolGoesWrong(SurgicalTool tool, float tear, float bleed) =>
-        tool.Def = tool.Def with { TearChance = tear, BleedChance = bleed };
+    /// <summary>This one improvised tool catches a vessel with this chance, the same tool on the tray otherwise.
+    /// </summary>
+    public static void ToolGoesWrong(SurgicalTool tool, float bleed) => tool.Def = tool.Def with { BleedChance = bleed };
 
     /// <summary>A tool dropped at <paramref name="at"/> (world), lying wherever it falls (left on the patient, say).
     /// </summary>
@@ -404,9 +395,8 @@ public static class SurgeryState {
     /// <summary>
     /// Opens the site as wide as it goes, like a clamshell: an H-shaped incision through the muscle, both flaps folded
     /// back over the sides they're still attached to, slowly, by forceps all along both edges that keep holding them.
-    /// Returns how many springs tore on the way.
     /// </summary>
-    public static int SiteIsOpenedWide(Patient patient) {
+    public static void SiteIsOpenedWide(Patient patient) {
         const float Middle = 0.51f;
         (Vector2 From, Vector2 To)[] cuts =
         [
@@ -417,10 +407,6 @@ public static class SurgeryState {
             patient.Cut(777000 + Mathf.RoundToInt(from.Y * 100f), from, to, 1f, 1f, false, 0.1f);
         }
         var tissue = patient.Body.Tissue;
-        var snapped = tissue.Snapped.Count;
-        // Thin skin (a patient quirk) is meant to tear on a fold like this; this is about ordinary skin.
-        var breakMult = tissue.BreakMult;
-        tissue.BreakMult = Mathf.Max(breakMult, 1f);
         // The flap turns up and over about the side of the site it's still attached to: one straight hinge along that
         // side, where it lies on the body on average (the body's flank drops away more under some of it than the
         // rest).
@@ -453,7 +439,5 @@ public static class SurgeryState {
         for (var i = 0; i < 60; i++) {
             tissue.Substep();
         }
-        tissue.BreakMult = breakMult;
-        return tissue.Snapped.Count - snapped;
     }
 }

@@ -4,7 +4,7 @@ namespace Scalpel.Tests.Tools;
 /// The staplers as a player uses them: the aim shows two rings lying on the skin where the legs go in, and a click with
 /// them on both edges of an open cut puts one staple in there, joining the edges. Through a belly cut into the muscle
 /// the first staples go into the muscle, then the skin closes over it. The office stapler works the same but now and
-/// then tears out of the skin or catches a vessel. Key frames: the site untouched, after the first staple and stapled
+/// then catches a vessel. Key frames: the site untouched, after the first staple and stapled
 /// shut, and what the surgeon sees (the two rings). Review them for steel staples bridging the cut square to it with
 /// their legs in the skin on both sides, the edges meeting between them and the rings on the cut's edges.
 /// </summary>
@@ -170,21 +170,11 @@ public class StaplerTest {
         var wound = patient.Wounds[^1];
         SurgeryState.ToolIsOnTray(driver.Surgery, "office_stapler");
         var stapler = (await driver.PlayerRequestsItem("office_stapler"))!;
-        AssertFloat(stapler.Def.TearChance + stapler.Def.BleedChance)
+        AssertFloat(stapler.Def.BleedChance)
             .OverrideFailureMessage("an office staple only now and then goes wrong").IsBetween(0.01f, 0.25f);
-        SurgeryState.ToolGoesWrong(stapler, 1f, 0f);
-        await AimOfficeStaple(driver, stapler, wound, 0.25f);
-        var wounds = patient.Wounds.Count;
-        await Click();
-        AssertBool(patient.Flags.ContainsKey("tears")).OverrideFailureMessage("an office staple that tears out tears the skin")
-            .IsTrue();
-        AssertInt(patient.Wounds.Count).OverrideFailureMessage("a tear is a new wound").IsEqual(wounds + 1);
-        AssertFloat(wound.Closure).OverrideFailureMessage("and the staple holds nothing").IsLess(0.1f);
-        await driver.Capture("torn", "an office staple torn out: a new tear in the skin, the staple holding nothing");
-
-        SurgeryState.ToolGoesWrong(stapler, 0f, 1f);
+        SurgeryState.ToolGoesWrong(stapler, 1f);
         await AimOfficeStaple(driver, stapler, wound, 0.7f);
-        wounds = patient.Wounds.Count;
+        var wounds = patient.Wounds.Count;
         await Click();
         await Frames.Seconds(1f);
         var siteM = body.UvToMeters(1f);

@@ -98,9 +98,9 @@ public class WoundClosureTest {
         SurgeryState.ToolIsOnTray(driver.Surgery, "office_stapler");
         var stapler = (await driver.PlayerRequestsItem("office_stapler"))!;
         var def = stapler.Def;
-        SurgeryState.ToolGoesWrong(stapler, 0f, 1f);
+        SurgeryState.ToolGoesWrong(stapler, 1f);
         await driver.PlayerStaples(wound, 0.01f, 2);
-        SurgeryState.ToolGoesWrong(stapler, def.TearChance, def.BleedChance);
+        SurgeryState.ToolGoesWrong(stapler, def.BleedChance);
         await Frames.Seconds(1f);
         AssertInt(patient.Wounds.Count).OverrideFailureMessage("the nicked vessels make no new wounds").IsEqual(1);
         AssertFloat(Bleeding(driver, wound)).OverrideFailureMessage("but the stapled cut bleeds through")

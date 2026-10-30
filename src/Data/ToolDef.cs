@@ -8,8 +8,6 @@ public sealed record ToolDef {
     public string Description { get; init; } = "";
     public float Sharpness { get; init; } = 1f;
     public float Quality { get; init; } = 1f;
-    /// <summary>Chance per staple that it tears out through the skin.</summary>
-    public float TearChance { get; init; }
     /// <summary>Chance per staple that it goes through a vessel and makes it bleed.</summary>
     public float BleedChance { get; init; }
     /// <summary>A stapler's staple width: meters between its legs.</summary>
@@ -68,7 +66,6 @@ public sealed record ToolDef {
             Description = config.String("description"),
             Sharpness = config.Float("sharpness", 1f),
             Quality = config.Float("quality", 1f),
-            TearChance = config.Float("tear_chance"),
             BleedChance = config.Float("bleed_chance"),
             StapleSpan = config.Float("staple_span"),
             StapleGive = config.Float("staple_give"),

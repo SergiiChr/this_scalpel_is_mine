@@ -58,8 +58,7 @@ public partial class Surgeon : CharacterBody3D {
     /// <see cref="AimPoint"/>).</summary>
     internal const float AimDrop = 0.1f;
     /// <summary>How far above what's inside an opening (meters) a lowered blade stays at each effort level: at full
-    /// effort it goes all the way down to it, close enough to grate on a bone (Patient.BladeReach), short of cutting an
-    /// organ.</summary>
+    /// effort it goes all the way down to it, short of cutting an organ.</summary>
     public static readonly float[] BladeInOpening = [HoverGap, 0.008f, 0.005f, 0.002f];
     /// <summary>One notch of the wheel moves forceps' tip this far (meters) up or down in an opening.</summary>
     public const float DepthStep = 0.005f;

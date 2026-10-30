@@ -41,10 +41,6 @@ public sealed class CutAction : ToolAction {
             use.CutWall = true;
             step.Surgery.Sound(level >= 3 ? "cut_deep" : "cut_skin", step.Tip);
         }
-        // Pressed in at full effort where the muscle is thin (no fat over it), the point reaches the bone under it.
-        if (step.Lowered && level == 3 && step.Zone == SiteZone.Site && step.Probe.Depth >= patient.Body.MuscleBottom) {
-            patient.ScrapeBone(step.Uv, step.Tip, step.Dt);
-        }
         // Moved along its edge, the blade cuts what it passes through, also where it runs on past the end of an opening
         // it's already in.
         if (!(step.Lowered && level > 0 && step.InSite)) {

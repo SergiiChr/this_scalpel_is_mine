@@ -180,8 +180,6 @@ public partial class Patient : Node3D {
         var tone = Materials.SkinTones[Rng.RandiRange(0, Materials.SkinTones.Count - 1)];
         var site = SiteDef.Of(scenario.Site);
         Body.FatThickness = site.Fat * (1f + Mods.Num("fat_depth") * 1.5f);
-        Body.Tissue.BreakMult = Mods.Mult("tear_threshold_mult");
-        Body.Tissue.Tearing = Multiplayer.IsServer();
         Body.Build(scenario.Site, tone, RollWeight(seed));
         if (scenario.Environment == "or") {
             Body.AddDrape();
@@ -308,12 +306,6 @@ public partial class Patient : Node3D {
         if (Body.SkinMaterial is not null) {
             Body.SetPallor(Mathf.Clamp(1f - Vitals.BloodRatio * 1.4f + 0.4f, 0f, 1f));
         }
-        if (Multiplayer.IsServer()) {
-            foreach (var snapped in Body.Tissue.Snapped) {
-                OnSnap(snapped);
-            }
-            Body.Tissue.Snapped.Clear();
-        }
     }
 
     // --- Simulation ---------------------------------------------------------------------------------------
@@ -385,7 +377,7 @@ public partial class Patient : Node3D {
                     var before = wound.Bins[i];
                     wound.Bins[i] = Mathf.Min(before + heal * dt, 1f);
                     if (before < 1f && wound.Bins[i] >= 1f && !wound.IsInternal) {
-                        Rpc(MethodName.TissueStitch, wound.BinPosition(i), StitchTension["closed"], TissueSim.TissueBreak);
+                        Rpc(MethodName.TissueStitch, wound.BinPosition(i), StitchTension["closed"]);
                     }
                 }
             }

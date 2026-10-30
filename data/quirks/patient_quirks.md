@@ -280,10 +280,10 @@ Format rules:
 - icon: [thin_skin.svg](../../assets/icons/quirks/patient/thin_skin.svg)
 - lore: Ninety years of sun. Skin like wet paper.
 - pros: None.
-- cons: Tears at half the usual pull and bruises twice as easily.
+- cons: Bruises twice as easily.
 - specifics: Use retractors gently. Tape closures hold poorly.
-- card: Fragile skin, tears easily.
-- effects: tear_threshold_mult=0.5, bruise_mult=2
+- card: Fragile skin, bruises easily.
+- effects: bruise_mult=2
 
 ## ticklish
 - name: Ticklish

@@ -169,17 +169,9 @@ public class SlicingTest {
 
         // Medium: deeper, then 2 cm more.
         var before = TipDepth();
-        var boneBeforeMedium = patient.Flags.GetValueOrDefault("bone_scraped");
-        var painBeforeMedium = patient.Vitals.Pain;
         await Press(2);
-        var reachesBone = !slice.Fat && patient.Flags.GetValueOrDefault("bone_scraped") > boneBeforeMedium
-            && patient.Body.BoneAt(_scalpel.TipPosition(), Patient.BladeReach).Length > 0;
-        Check(TipDepth() > before || reachesBone,
-            $"pressed at medium it digs deeper or reaches exposed bone ({before:0.0000} -> {TipDepth():0.0000} m, bone {reachesBone})");
-        if (reachesBone) {
-            Check(patient.Vitals.Pain > painBeforeMedium + 0.1f,
-                $"first contact with exposed bone hurts through the local block (pain {painBeforeMedium:0.00} -> {patient.Vitals.Pain:0.00})");
-        }
+        Check(TipDepth() > before || patient.Body.BoneAt(_scalpel.TipPosition(), 0.005f).Length > 0,
+            $"pressed at medium it digs deeper or reaches exposed bone ({before:0.0000} -> {TipDepth():0.0000} m)");
         await ShotsOf(slice.Id, "04_pressed_medium");
         await MoveAlong();
         var second = Segment(1);
@@ -217,15 +209,8 @@ public class SlicingTest {
             await PlayerInput.Delivered();
         }
         before = TipDepth();
-        var pain = patient.Vitals.Pain;
-        var scraped = patient.Flags.GetValueOrDefault("bone_scraped");
         await Press(3);
         if (!slice.Fat) {
-            Check(patient.Flags.GetValueOrDefault("bone_scraped") > scraped, "pressed at high it hits the bone");
-            if (!reachesBone) {
-                Check(patient.Vitals.Pain > pain + 0.1f, "hitting the bone hurts through the local block "
-                    + $"(pain {pain:0.00} -> {patient.Vitals.Pain:0.00}, block {patient.Vitals.LocalBlock:0.00})");
-            }
             await ShotsOf(slice.Id, "06_pressed_high");
         } else {
             Check(TipDepth() > before, $"pressed at high it digs deeper ({before:0.0000} -> {TipDepth():0.0000} m)");
@@ -900,7 +885,7 @@ public class SlicingTest {
         var depths = patient.Wounds.GroupBy(wound => wound.Kind)
             .Select(kind => $"{kind.Key}: {kind.Max(wound => wound.Depth):0.00}");
         GD.Print($"         tip {probe.Zone} {probe.Depth:0.0000} m, wounds {{{string.Join(", ", depths)}}}, "
-            + $"pain {patient.Vitals.Pain:0.00}, bone scraped {patient.Flags.GetValueOrDefault("bone_scraped"):0.00}");
+            + $"pain {patient.Vitals.Pain:0.00}");
     }
 
     private async Task Hold(float seconds) {

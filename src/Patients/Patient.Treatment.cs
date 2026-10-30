@@ -12,8 +12,6 @@ public partial class Patient {
         ["closed"] = 0.95f,
         ["too tight"] = 0.8f,
     };
-    /// <summary>How much load a running thread's spans take before they snap, per layer it's sewn in.</summary>
-    public static readonly float[] ThreadStrength = [0f, 2f, 2.15f, 3f];
     /// <summary>How much of the skin's wounds (by length, <see cref="SkinClosure"/>) has to be closed for them to count
     /// as closed, in every scenario: a few millimeters left open per ten centimeters of cut.</summary>
     public const float ClosedEnough = 0.9f;
@@ -41,11 +39,6 @@ public partial class Patient {
     /// </summary>
     public const float SkinDepth = 0.4f;
     /// <summary>Pain from the blade scraping bone: a jolt when it first touches.</summary>
-    public const float BoneJolt = 0.35f;
-    /// <summary>Pain per second while a blade grates on bone.</summary>
-    public const float BonePain = 0.6f;
-    /// <summary>How close (meters) to the blade's tip a bone has to be for the blade to grate on it.</summary>
-    public const float BladeReach = 0.005f;
     /// <summary>How close (meters) to the blade's tip an organ has to be for it to be cut.</summary>
     public const float OrganReach = 0.001f;
     /// <summary>ml of blood a swab of power 1 takes up per second of wiping, while it has room for it.</summary>
@@ -168,8 +161,8 @@ public partial class Patient {
         return true;
     }
 
-    /// <summary>Cutting inside the body frees attached targets, or nicks whatever the blade touches. The blade grates on
-    /// a bone it touches, which hurts through a local block. A blade cuts free only a target it was put down on, at
+    /// <summary>Cutting inside the body frees attached targets, or nicks whatever the blade touches.
+    /// A blade cuts free only a target it was put down on, at
     /// <paramref name="putDownAt"/> (site uv) when it's held there: drawn on from cutting the body wall (null) or from
     /// somewhere else in the opening, it passes over one.</summary>
     public void CutCavity(Vector2 tipUv, float depthM, float power, bool dirty, float dt, Vector2? putDownAt) {
@@ -177,9 +170,6 @@ public partial class Patient {
             Contaminate();
         }
         var tip = Body.UvToWorld(tipUv, depthM);
-        if (ScrapeBone(tipUv, tip, dt)) {
-            return;
-        }
         foreach (var target in Targets) {
             if (putDownAt is { } at && !target.Extracted && target.Anchor > 0f && target.Uv.DistanceTo(tipUv) < 0.06f
                 && target.Uv.DistanceTo(at) < 0.06f) {
@@ -198,48 +188,6 @@ public partial class Patient {
             Session.Scoring.Add("organ_nick", true);
             Session.Announce("That wasn't the target. Something is bleeding in there.");
         }
-    }
-
-    /// <summary>A blade touching a bone at <paramref name="tip"/> (world space) grates on it, which hurts through a local
-    /// block. False if there's no bone there.</summary>
-    public bool ScrapeBone(Vector2 tipUv, Vector3 tip, float dt) {
-        var bone = Body.BoneAt(tip, BladeReach);
-        if (bone.Length == 0) {
-            return false;
-        }
-        var now = GameClock.Seconds;
-        if (now - _boneTouched > 0.5) {
-            Hurt(BoneJolt, tipUv, deep: true);
-        }
-        _boneTouched = now;
-        Hurt(BonePain * dt, tipUv, deep: true);
-        AddFlag("bone_scraped", dt);
-        if (!Flags.ContainsKey("bone_notice")) {
-            AddFlag("bone_notice");
-            var what = bone switch { "rib" => "a rib", "sternum" => "the breastbone", _ => "bone" };
-            Session.Announce($"The blade grates on {what}.");
-        }
-        if (Rng.Randf() < dt * 2f) {
-            Session.Sound("saw_bone", tip);
-        }
-        return true;
-    }
-
-    public void Tear(Vector2 from, Vector2 direction, float lengthUv) {
-        var to = from + direction.Normalized() * lengthUv;
-        Rpc(MethodName.TissueCut, from, to, (int)TissueDepth.Fat, false);
-        AddTear(from, to);
-    }
-
-    private void AddTear(Vector2 from, Vector2 to) {
-        var wound = NewWound(WoundKind.Tear, from, 0.8f);
-        wound.Extend(to);
-        PaintWound(wound);
-        Hurt(0.5f, from);
-        AddFlag("tears");
-        Session.Scoring.Add("skin_tear");
-        Session.Sound("tear_skin", Body.UvToWorld(from));
-        Reveal("thin_skin");
     }
 
     /// <summary>A new running thread for the needle: its id for <see cref="PlaceSutureAnchor"/> and the rest.</summary>
@@ -282,8 +230,7 @@ public partial class Patient {
         }
         (var point, uv) = Hole(uv, layer, wound);
         var before = tissue.ThreadUvs(threadId).Count;
-        Rpc(MethodName.SutureAnchor, threadId, uv, point, (int)layer, tension, ThreadStrength[(int)layer],
-            tissue.ThreadSlack(threadId, point));
+        Rpc(MethodName.SutureAnchor, threadId, uv, point, (int)layer, tension, tissue.ThreadSlack(threadId, point));
         if (tissue.ThreadUvs(threadId).Count == before) {
             return false;
         }
@@ -355,7 +302,7 @@ public partial class Patient {
             return;
         }
         if (tension < TissueSim.ThreadTear[layer] || (overMuscle && closure >= 0.99f)) {
-            SnapSuture(threadId, all, (points[1] - points[0]).Orthogonal(), overMuscle);
+            SnapSuture(threadId, all, overMuscle);
             return;
         }
         if (overMuscle) {
@@ -400,9 +347,9 @@ public partial class Patient {
         // The thread gathers the edges at its holes: every severed edge the bites hold is joined too, not only the
         // exact crossings, which are a little shorter so the thread dimples the skin where it pulls.
         foreach (var crossing in crossings) {
-            Rpc(MethodName.TissueStitch, crossing, 0.98f, ThreadStrength[(int)layer]);
+            Rpc(MethodName.TissueStitch, crossing, 0.98f);
         }
-        Rpc(MethodName.TissueStitchPath, path, Wound.BinLengthUv * 1.2f, 1f, ThreadStrength[(int)layer]);
+        Rpc(MethodName.TissueStitchPath, path, Wound.BinLengthUv * 1.2f, 1f);
         PaintSeam(path);
         ClosedWith(wound, quality);
     }
@@ -532,7 +479,7 @@ public partial class Patient {
 
     /// <summary>The thread cut through the tissue (where it first crosses a wound, of <paramref name="crossings"/>): it
     /// lets go everywhere, and what it held is as open as before it.</summary>
-    private void SnapSuture(int threadId, List<Vector2> crossings, Vector2 across, bool overMuscle) {
+    private void SnapSuture(int threadId, List<Vector2> crossings, bool overMuscle) {
         foreach (var (id, held) in _sutures[threadId]) {
             if (WoundWithId(id) is not { } wound) {
                 continue;
@@ -547,15 +494,9 @@ public partial class Patient {
         Rpc(MethodName.TissuePucker, crossings.ToArray(), 0.018f, 0f);
         Rpc(MethodName.SutureSnap, threadId);
         var layer = Body.Tissue.Thread(threadId)!.Layer;
-        if (layer == TissueDepth.Skin) {
-            Tear(crossings[0], across, 0.018f);
-            Session.Scoring.Add("suture_tear_through");
-            TearNotice(overMuscle
-                ? "The stitch tore through: the muscle under it is still open."
-                : "The thread was pulled too tight and tore through the skin.");
-        } else {
-            Session.Announce($"The thread cut through the {(layer == TissueDepth.Fat ? "fat" : "muscle")}.", true);
-        }
+        TearNotice(overMuscle && layer == TissueDepth.Skin
+            ? "The thread snapped: the muscle under it is still open."
+            : "The thread was pulled too tight and snapped.");
     }
 
     /// <summary>
@@ -585,14 +526,8 @@ public partial class Patient {
             Hurt(0.06f, at);
             return true;
         }
-        var leg = Rng.Randi() % 2 == 0 ? a : b;
-        if (Rng.Randf() < def.TearChance) {
-            Tear(leg, leg - at, Body.MetersToUv(0.012f));
-            Session.Announce("The staple tore out through the skin.", true);
-            return true;
-        }
         var quality = def.Improvised ? Mathf.Lerp(def.Quality, 1f, 1f - improvisedMult) : def.Quality;
-        Rpc(MethodName.TissueStitch, at, StitchTension["closed"], 1.2f + quality);
+        Rpc(MethodName.TissueStitch, at, StitchTension["closed"]);
         // One bin either side as well, so even a staple over a single bin has a direction along the cut to squeeze.
         var (first, last) = bins.Count > 0
             ? (Math.Max(bins.Min() - 1, 0), Math.Min(bins.Max() + 1, wound.Bins.Length - 1)) : (0, -1);
@@ -604,7 +539,7 @@ public partial class Patient {
             AddFlag("office_staples");
         }
         if (Rng.Randf() < def.BleedChance) {
-            StapleBleed(wound, leg);
+            StapleBleed(wound, Rng.Randi() % 2 == 0 ? a : b);
         }
         Hurt(0.06f, at);
         return true;
@@ -646,52 +581,31 @@ public partial class Patient {
         } else if (tight) {
             quality = Mathf.Min(quality * 1.05f, 1f);
         }
-        // Skin pulled shut over open muscle carries the muscle's pull: the edges won't meet, and a tight stitch gets
-        // them there only to tear through.
+        // Skin pulled shut over open muscle carries the muscle's pull: the edges won't meet.
         if (wound.ThroughMuscle && Body.Tissue.MuscleOpenNear(wound.BinPosition(bin), MuscleReach)) {
             // A stab or a bullet hole is too small to reach into: the needle goes in through it and sews the muscle
             // first.
             if (wound.IsHole && !Body.IsOpen(uv)) {
                 return CloseMuscleAt(uv, def, dt);
             }
-            if (!tight) {
-                TearNotice("The skin won't meet over the open muscle. Sew the muscle first.");
-                return false;
-            }
-            wound.Bins[bin] = Mathf.Min(wound.Bins[bin] + def.Power * 1.5f * dt, cap);
-            if (wound.Bins[bin] >= cap) {
-                wound.Bins[bin] = 0f;
-                Tear(wound.BinPosition(bin), RandomDirection(), 0.02f);
-                Session.Scoring.Add("suture_tear_through");
-                TearNotice("The stitch tore through: the muscle under it is still open.");
-            }
+            TearNotice("The skin won't meet over the open muscle. Sew the muscle first.");
             return false;
         }
         var before = wound.Bins[bin];
         wound.Bins[bin] = Mathf.Min(before + def.Power * 1.5f * dt, cap);
         wound.ClosureQuality = Mathf.Lerp(wound.ClosureQuality, quality, 0.2f);
         var reachedCap = before < cap && wound.Bins[bin] >= cap;
-        if (tight && reachedCap && Rng.Randf() < 0.2f / Mods.Mult("tear_threshold_mult")) {
-            wound.Bins[bin] = 0.3f;
-            Tear(wound.BinPosition(bin), RandomDirection(), 0.02f);
-            Rpc(MethodName.TissueBurst, wound.BinPosition(bin), 0.03f);
-            Session.Scoring.Add("suture_tear_through");
-            Session.Announce("Pulled too tight. The stitch tore through the skin.", true);
-            return false;
-        }
         if (!reachedCap) {
             return false;
         }
         var p = wound.BinPosition(bin);
         Paint(WoundMap.Layer.Wounds, WoundMap.Cut, p, p, 0.012f, 0.35f, WoundMap.Mode.Min);
         Paint(WoundMap.Layer.Wounds, WoundMap.Stitch, p - new Vector2(0.006f, 0f), p + new Vector2(0.006f, 0f), 0.002f, 1f, WoundMap.Mode.Max);
-        Rpc(MethodName.TissueStitch, p, StitchTension[pull], 1.2f + quality);
+        Rpc(MethodName.TissueStitch, p, StitchTension[pull]);
         ScoreNeatClosure(wound);
         Hurt(0.06f, uv);
         return true;
     }
-
-    private Vector2 RandomDirection() => new(Rng.RandfRange(-1f, 1f), Rng.RandfRange(-1f, 1f));
 
     /// <summary>Sewing inside the opening of a wound through the muscle closes the muscle, bin by bin. Returns true when
     /// a bin of muscle closed.</summary>

@@ -5,10 +5,8 @@ namespace Scalpel.Patients;
 /// down along its whole length. It pulls a small cut's edges under it together, at the tension skin closes at, and lays
 /// gauze it goes over on the wound, pressing. How firmly it sticks is its grip (<see cref="Grip"/>): the tape's own,
 /// less on blood and on a cut into the fat. It can only pull edges together that lie no further apart than its grip
-/// (the stretch a stitch joining them would start at, TissueSim.TapeLoad()), and once they're shut it lets go when
-/// they're pulled apart again by a share of that (<see cref="TapeHold"/>): a hand pulling on the skin beside it, a
-/// strain. Blood oozing under it soaks in and loosens it more. Let go, it peels off and the cut opens again. It can't
-/// close skin over open muscle.
+/// (the stretch a stitch joining them would start at, TissueSim.TapeLoad()), and once they're shut it holds. Let go, it
+/// peels off and the cut opens again. It can't close skin over open muscle.
 /// A stretch laid over gauze holds the gauze, not the edges under it. The gauze soaks up what its pressure holds back,
 /// and once it's full the blood soaks through into the tape, until the tape lets go and the gauze with it.
 /// </summary>
@@ -21,9 +19,6 @@ public partial class Patient {
     /// </summary>
     public const float WetGrip = 0.35f;
     public const float DeepGrip = 0.6f;
-    /// <summary>The share of its grip that holds the edges once they're shut: they're pulled apart again only by a hand
-    /// pulling on the skin or a strain, and the tape lets go at a stretch of 1 + (grip - 1) * TapeHold.</summary>
-    public const float TapeHold = 0.12f;
     /// <summary>How fast blood oozing under a strip soaks it: 1 / TapeSoak ml soak it through.</summary>
     public const float TapeSoak = 0.05f;
     /// <summary>Gauze within this height (meters) over the skin under a stretch of tape is taped down with it: lying on
@@ -138,7 +133,7 @@ public partial class Patient {
             PeelTape(id, "The cut gapes wider than the tape can pull shut. It peeled off.");
             return;
         }
-        Rpc(MethodName.TapeStretch, id, tension, Hold(taping));
+        Rpc(MethodName.TapeStretch, id, tension);
         foreach (var wound in under) {
             taping.Wounds.Add(wound);
             ClosedWith(wound, wound.Depth > 0.6f ? taping.Def.Quality * 0.5f : taping.Def.Quality);
@@ -154,10 +149,6 @@ public partial class Patient {
         var deep = Mathf.Clamp((taping.Depth - SkinDepth) / (Wound.MuscleDepth - SkinDepth), 0f, 1f);
         return 1f + (taping.Def.Power * TapeGrip * (1f - (WetGrip * taping.Wet)) * (1f - (DeepGrip * deep)));
     }
-
-    /// <summary>How far a strip's hold on edges it shut stretches before it lets go (see <see cref="Spring.Break"/>).
-    /// </summary>
-    private static float Hold(Taping taping) => 1f + ((Grip(taping) - 1f) * TapeHold);
 
     /// <summary>Gauze lying on the skin, or held on it, under the stretch from <paramref name="a"/> to
     /// <paramref name="b"/> (uv) is taped down there. False when the stretch lies on no gauze, this strip's own
@@ -190,7 +181,6 @@ public partial class Patient {
             var soak = taping.Wounds.Sum(w => w.Bleeding) * TapeSoak * dt;
             if (soak > 0f && taping.Wet < 1f) {
                 taping.Wet = Mathf.Min(taping.Wet + soak, 1f);
-                Body.Tissue.TapeStrength(id, Hold(taping));
             }
             if (taping.Gauze.Any(gauze => gauze.State != ToolState.Standing && !gauze.Taped)) {
                 PeelTape(id, "The tape came off with the gauze.");

@@ -15,7 +15,7 @@ public class SteadyStateAllocationTest {
     /// size the warm-up grew them to), and the body takes the region every step as it does every other frame.</summary>
     [TestCase]
     public void MovingSkinBesideACut() {
-        var sim = new TissueSim { Tearing = true };
+        var sim = new TissueSim();
         sim.Build(new Vector2(0.3f, 0.25f), _ => 0f);
         sim.Cut(new Vector2(0.2f, 0.51f), new Vector2(0.8f, 0.51f), TissueDepth.Skin);
         sim.Grip(1, new Vector2(0.5f, 0.4f));

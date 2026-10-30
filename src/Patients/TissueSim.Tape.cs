@@ -46,14 +46,13 @@ public sealed partial class TissueSim {
 
     /// <summary>
     /// Sticks the newest stretch of strip <paramref name="id"/> (between its last two points) down: every cut edge under
-    /// it (<see cref="UnderStretch"/>) is held at <paramref name="tension"/> by a stitch that lets go past
-    /// <paramref name="strength"/> (see <see cref="Spring.Break"/>). Returns how many edges it holds.
+    /// it (<see cref="UnderStretch"/>) is held at <paramref name="tension"/> by a stitch. Returns how many edges it holds.
     /// </summary>
-    public int TapeStretch(int id, float tension, float strength) {
+    public int TapeStretch(int id, float tension) {
         var tape = _tapes[id];
         var held = 0;
         foreach (var s in UnderStretch(tape)) {
-            var hold = AddSpring(_springs[s].A, _springs[s].B, SpringKind.Stitch, tension, strength);
+            var hold = AddSpring(_springs[s].A, _springs[s].B, SpringKind.Stitch, tension);
             tape.Holds.Add(hold);
             _tapeOfSpring[hold] = id;
             held++;
@@ -73,9 +72,9 @@ public sealed partial class TissueSim {
             .Select(s => Pos[_springs[s].A].DistanceTo(Pos[_springs[s].B]) / (Rest[_springs[s].A].DistanceTo(Rest[_springs[s].B]) * tension))
             .DefaultIfEmpty(0f).Max();
 
-    /// <summary>Whether a stitch of <paramref name="strength"/> stretched <paramref name="stretch"/> holds (see
-    /// CheckSnap()).</summary>
-    public bool Holds(float stretch, float strength) => stretch <= 1f + (strength - 1f) * BreakMult;
+    /// <summary>Whether a stitch of <paramref name="strength"/> can pull edges together <paramref name="stretch"/> apart.
+    /// </summary>
+    public bool Holds(float stretch, float strength) => stretch <= strength;
 
     /// <summary>The cut edges under the newest stretch of <paramref name="tape"/>: severed springs crossed within its
     /// half width and not held yet. Not where the muscle under it is still cut: that holds the skin apart, and tape
@@ -91,14 +90,6 @@ public sealed partial class TissueSim {
                 && at.DistanceTo(Geometry2D.GetClosestPointToSegment(at, from, to)) <= tape.HalfWidth) {
                 yield return s;
             }
-        }
-    }
-
-    /// <summary>Host: how far strip <paramref name="id"/>'s stitches stretch before it lets go (wet, it sticks less).
-    /// </summary>
-    public void TapeStrength(int id, float strength) {
-        foreach (var s in _tapes[id].Holds) {
-            _springs[s].Break = strength;
         }
     }
 

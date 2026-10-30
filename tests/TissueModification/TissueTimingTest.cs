@@ -12,7 +12,6 @@ public class TissueTimingTest {
         var body = driver.Body;
         body.SetProcess(false);
         var sim = body.Tissue;
-        sim.Tearing = false;
         var at = new Vector2(0.5f, 0.55f);
         var k = sim.Nearest(at);
         var origin = sim.Pos[k];

@@ -15,10 +15,7 @@ internal sealed partial class GameplaySweep {
             if (!Body.Organs.Any(organ => organ.Layer == 1)) {
                 Fail($"the {Site} has no organs under the top layer");
             }
-            var torn = SurgeryState.SiteIsOpenedWide(Patient);
-            if (torn > 0) {
-                Fail($"folding the flaps of the {Site} back tore {torn} springs");
-            }
+            SurgeryState.SiteIsOpenedWide(Patient);
             await Frames.Physics(2);
             // --coverage draws what's still covered: one row per uv.x (feet first), # where soft tissue is in the way.
             if (OS.GetCmdlineUserArgs().Contains("--coverage")) {
@@ -151,8 +148,8 @@ internal sealed partial class GameplaySweep {
         Fail($"nothing in the open {Site} lies under the top layer of organs");
     }
 
-    /// <summary>Chest and limbs: a deep cut opens down to the bone. It's right under the muscle, a tool rests on it,
-    /// and the blade grates on it.</summary>
+    /// <summary>Chest and limbs: a deep cut opens down to the bone. It's right under the muscle and a tool rests on it.
+    /// </summary>
     private void BoneChecks() {
         if (Body.Bones.Count == 0) {
             if (!Patient.Targets.Any(target => target.Kind is "bone" or "sternum")) {
@@ -178,13 +175,6 @@ internal sealed partial class GameplaySweep {
         var depth = Body.SurfaceHeight(uv) - middle.Y;
         if (depth < top || depth > Body.CavityDepth()) {
             Fail($"the {bone.Name} sits {depth:0.000} m under the skin, not under the muscle inside the cavity");
-        }
-        var scraped = Patient.Flags.GetValueOrDefault("bone_scraped");
-        // Down to just over the bone's top, where a blade at full effort stops in an opening.
-        var thickness = ((CapsuleShape3D)bone.GetChild<CollisionShape3D>(1).Shape).Radius;
-        Patient.CutCavity(uv, depth - thickness - 0.002f, 1f, false, 0.5f, uv);
-        if (Patient.Flags.GetValueOrDefault("bone_scraped") <= scraped) {
-            Fail($"cutting down on the {bone.Name} didn't reach the bone");
         }
     }
 

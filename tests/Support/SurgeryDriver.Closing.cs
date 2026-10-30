@@ -42,6 +42,13 @@ public partial class SurgeryDriver {
                     for (var thread = 0; thread < 2 && MuscleOpen(wound); thread++) {
                         await Sew(wound, TissueDepth.Muscle);
                     }
+                    // A slit that shows none of the muscle under it is cut open to bare it.
+                    if (MuscleOpen(wound) && wound.IsHole && !IsCutOpen(wound)) {
+                        await PlayerPutsDown();
+                        await PlayerCutsOpen(wound);
+                        await PlayerRequestsItem(toolId);
+                        await Sew(wound, TissueDepth.Muscle);
+                    }
                 }
             }
             foreach (var wound in Patient.Wounds.Where(wound => wound.IsSkinCut).ToList()) {

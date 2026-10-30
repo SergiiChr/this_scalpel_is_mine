@@ -166,7 +166,6 @@ public partial class Patient {
                         if (speed > 0.25f || pulled < -0.05f) {
                             Session.Scoring.Add("forced_extraction");
                             Session.Announce("Ripped it out!");
-                            Tear(target.Uv, RandomDirection(), 0.05f);
                             target.Anchor = 0f;
                         }
                     }

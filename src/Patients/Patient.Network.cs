@@ -79,40 +79,6 @@ public partial class Patient {
             .Select(grip => new TissueGrip(grip[0].AsInt32(), grip[1].AsInt32(), grip[2].AsVector3(), grip[3].AsVector3()))]);
     }
 
-    /// <summary>Host: a spring in the tissue sim was stretched too far and snapped.</summary>
-    private void OnSnap(SnappedSpring snapped) {
-        var mid = (snapped.A + snapped.B) * 0.5f;
-        Rpc(MethodName.TissueSnap, snapped.Spring);
-        if (Surgery.Current is not { Running: true }) {
-            return;
-        }
-        if (Body.Tissue.TapeOf(snapped.Spring) is > 0 and var tape && Body.Tissue.Tape(tape) is { Peeled: false }) {
-            PeelTape(tape, "The tape let go of the skin and the cut pulled open.");
-            return;
-        }
-        var wound = NearestWound(mid, 0.04f, false);
-        if (snapped.Kind == SpringKind.Stitch) {
-            if (wound is not null) {
-                // Torn through, it holds the cut at most a little: a bin already open stays open.
-                var bin = wound.BinAt(mid);
-                wound.Bins[bin] = Mathf.Min(wound.Bins[bin], 0.3f);
-                Paint(WoundMap.Layer.Wounds, WoundMap.Stitch, mid, mid, 0.008f, 0f, WoundMap.Mode.Min);
-            }
-            Session.Scoring.Add("suture_tear_through");
-            TearNotice("A stitch tore through the skin.");
-            Hurt(0.3f, mid);
-            return;
-        }
-        // Neighbouring springs tend to go together; grow the fresh tear instead of making one wound per spring.
-        if (wound is { Kind: WoundKind.Tear } && wound.Points[^1].DistanceTo(mid) < 0.06f) {
-            Paint(WoundMap.Layer.Wounds, WoundMap.Cut, wound.Points[^1], mid, 0.005f, 0.6f, WoundMap.Mode.Max, 0.006f);
-            wound.Extend(mid);
-            return;
-        }
-        AddTear(snapped.A, snapped.B);
-        TearNotice("The skin tore!");
-    }
-
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     private void TissueCut(Vector2 a, Vector2 b, int depth, bool stitches) => Body.Tissue.Cut(a, b, (TissueDepth)depth, stitches);
 
@@ -120,18 +86,18 @@ public partial class Patient {
     private void TissueExcise(int k) => Body.Tissue.Excise(k);
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    private void TissueStitch(Vector2 uv, float tension, float strength) => Body.Tissue.Stitch(uv, tension, strength);
+    private void TissueStitch(Vector2 uv, float tension) => Body.Tissue.Stitch(uv, tension);
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     private void TissueStaple(Vector2 a, Vector2 b, int layer) => Body.AddStaple(a, b, (TissueDepth)layer);
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    private void TissueStitchPath(Vector2[] points, float radius, float tension, float strength) =>
-        Body.Tissue.StitchPath(points, radius, tension, strength);
+    private void TissueStitchPath(Vector2[] points, float radius, float tension) =>
+        Body.Tissue.StitchPath(points, radius, tension);
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    private void SutureAnchor(int id, Vector2 uv, int point, int layer, float tension, float strength, float slack) =>
-        Body.Tissue.ThreadAnchor(id, uv, (TissueDepth)layer, tension, strength, slack, point);
+    private void SutureAnchor(int id, Vector2 uv, int point, int layer, float tension, float slack) =>
+        Body.Tissue.ThreadAnchor(id, uv, (TissueDepth)layer, tension, slack, point);
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     private void SutureTension(int id, float tension) => Body.Tissue.ThreadTension(id, tension);
@@ -149,7 +115,7 @@ public partial class Patient {
     }
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    private void TapeStretch(int id, float tension, float strength) => Body.Tissue.TapeStretch(id, tension, strength);
+    private void TapeStretch(int id, float tension) => Body.Tissue.TapeStretch(id, tension);
 
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     private void TapeFinish(int id) => Body.Tissue.FinishTape(id);
@@ -171,9 +137,6 @@ public partial class Patient {
     private void TissueBurst(Vector2 uv, float radius) => Body.Tissue.Burst(uv, radius);
 
     /// <summary>The host's sim already snapped the spring; clients mirror it.</summary>
-    [Rpc(TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    private void TissueSnap(int spring) => Body.Tissue.SnapSpring(spring);
-
     [Rpc(CallLocal = true, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     private void IvPlaced(Vector3 point, bool connected) {
         IvSet = true;
