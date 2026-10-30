@@ -242,6 +242,15 @@ public partial class SurgeryDriver {
         };
         await NeedleInto(target, route != Route.Drip);
         var isIn = await NeedleIsIn(syringe);
+        // Another surgeon's hand over the spot takes the needle: the player draws it back and tries again once the
+        // hand has moved on, rather than push the drug into a colleague.
+        for (var tries = 0; isIn && Syringe.NeedleTarget(syringe, Patient) is SurgeonTarget && tries < 5; tries++) {
+            Note($"needle in {Syringe.NeedleTarget(syringe, Patient)}, drawn back");
+            await NeedleOut();
+            await Frames.Seconds(1f);
+            await NeedleInto(target, route != Route.Drip);
+            isIn = await NeedleIsIn(syringe);
+        }
         if (isIn) {
             into = Syringe.NeedleTarget(syringe, Patient);
             var notches = Mathf.CeilToInt(syringe.Ml + syringe.Air) + 1;
