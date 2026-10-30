@@ -75,8 +75,10 @@ ASSEMBLY = ROOT / ".godot/mono/temp/bin/Debug/ThisScalpelIsMine.dll"
 RUNNER_CLASS = ROOT / "gdunit4_testadapter_v5/GdUnit4TestRunnerScene.cs"
 # Runs a test process on an X server of its own on the desktop, drawn by the GPU (see the script).
 GPU_DISPLAY = ROOT / "tools/with_gpu_display.sh"
-# The suites the last test run passed, with the options it ran with (see test --resume).
+# The suites the last test run with each set of options passed (see test --resume).
 LAST_RUN = BUILD / "test-results" / "last-run.json"
+# The options of the run the key frames among a run's belong to: a run with other options clears them.
+KEY_FRAMES_OF = "options"
 # Godot as test processes run it: without the adapter's editor pass (see the script), as setup() built and imported.
 TEST_GODOT = ROOT / "tools/godot_for_tests.sh"
 # A Godot step or test fails on any of these in its output, as well as on its own exit code or assertions.
@@ -834,10 +836,13 @@ def test(arguments: list[str]) -> int:
         run_broken=os.environ.get("RUN_BROKEN") == "1",
     )
     suites = selected(discover(), options)
-    # What the last run with these options passed: a resumed run leaves those suites out and keeps their key frames.
-    selection = sorted(argument for argument in arguments if argument != "--resume")
-    last = json.loads(LAST_RUN.read_text()) if LAST_RUN.exists() else {}
-    passed_before = set(last.get("passed", [])) if parsed.resume and last.get("selection") == selection else set()
+    # What the last run with these options passed: a resumed run leaves those suites out and keeps their key frames, as
+    # long as no run with other options (a check on a suite alone) has taken key frames since and cleared them.
+    selection = " ".join(argument for argument in arguments if argument != "--resume")
+    runs: dict[str, list[str]] = json.loads(LAST_RUN.read_text()) if LAST_RUN.exists() else {}
+    frames_of = KEY_FRAMES / KEY_FRAMES_OF
+    frames_kept = not options.key_frames or frames_of.exists() and frames_of.read_text() == selection
+    passed_before = set(runs.get(selection, [])) if parsed.resume and frames_kept else set()
     suites = [suite for suite in suites if suite.full_name not in passed_before]
     if parsed.list:
         for suite in suites:
@@ -849,9 +854,17 @@ def test(arguments: list[str]) -> int:
     if not suites:
         print(f"No tests match tags {options.tags} and case '{options.case}'.", file=sys.stderr)
         return 2
+    if options.key_frames and not has_display():
+        print(
+            "[WARN] No Wayland desktop with Xwayland and an NVIDIA GPU: key frames are drawn in software, and nearly "
+            "every one will differ from the baseline drawn on the GPU.",
+            flush=True,
+        )
     if options.key_frames and not passed_before:
         # Key frames of an earlier run would pass for this one's.
         shutil.rmtree(KEY_FRAMES, ignore_errors=True)
+        KEY_FRAMES.mkdir(parents=True)
+        frames_of.write_text(selection)
     setup()
     for folder in ("test-logs", "test-results"):
         (BUILD / folder).mkdir(parents=True, exist_ok=True)
@@ -876,7 +889,8 @@ def test(arguments: list[str]) -> int:
     earlier = f", {len(passed_before)} passed in the last run" if passed_before else ""
     print(f"{len(outcomes) - failed - skipped} passed, {failed} failed, {skipped} skipped, {len(pending)} pending{earlier}.")
     passed_now = passed_before | {outcome.suite.full_name for outcome in outcomes if not outcome.failures}
-    LAST_RUN.write_text(json.dumps({"selection": selection, "passed": sorted(passed_now)}, indent=2) + "\n")
+    runs[selection] = sorted(passed_now)
+    LAST_RUN.write_text(json.dumps(runs, indent=2) + "\n")
     if not any(outcome.executed for outcome in outcomes) and not passed_before:
         print("[ERROR] No test cases ran.", file=sys.stderr)
         return 1

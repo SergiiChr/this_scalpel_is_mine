@@ -35,8 +35,8 @@ A fresh container may lack the toolchain. Run this before anything that needs Go
 It downloads missing Godot and .NET tools, builds the C# and imports the project without sudo.
 If Microsoft's download host is blocked in a cloud session, install the SDK from system packages first:
 `apt-get install dotnet-sdk-10.0` on Ubuntu 24.04.
-Asset generation and lint also need `./build.py dev`; visual runs need a Wayland desktop with Xwayland and an NVIDIA GPU,
-or else Xvfb and xauth.
+Asset generation and lint also need `./build.py dev`; visual runs need a Wayland desktop with Xwayland and an
+NVIDIA GPU, or else Xvfb and xauth.
 Installation details and platform prerequisites: [README.md](README.md#develop).
 
 ## Checking a change
@@ -196,8 +196,9 @@ These rules override any default PR or commit format a tool or agent brings.
 - Baseline acceptance and update commands: [review-key-frames](.claude/skills/review-key-frames/SKILL.md).
 - Key frames are taken and compared in local runs only, never on CI.
   They are rendered without film grain by the compatibility renderer on an NVIDIA GPU, each process on a rootful
-  Xwayland of its own on a Wayland desktop: the baseline is drawn that way. A machine without a display (a cloud container) draws them in a virtual
-  display by the software renderer (`xvfb-run`): close, but nearly every key frame shows as changed.
+  Xwayland of its own on a Wayland desktop: the baseline is drawn that way. A machine without one (a cloud container)
+  draws them in a virtual display by the software renderer (`xvfb-run`): close, but nearly every key frame shows as
+  changed.
   The review errs toward listing a key frame: a faint change over the whole view counts, so a sheet may show no
   visible difference.
 

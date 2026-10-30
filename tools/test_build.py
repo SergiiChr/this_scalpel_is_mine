@@ -163,6 +163,22 @@ class CoverageReportingTest(unittest.TestCase):
         self.assertEqual(result.executed, 1)
         self.assertIn("gap missing", result.failures[0])
 
+    def test_a_resume_runs_everything_after_key_frames_were_taken_with_other_options(self) -> None:
+        self.suite.cases = [build.Case("Runs", [], "", [])]
+        later = build.Suite(Path("LaterTest.cs"), "Scalpel.Tests.Later", [], [], False, [build.Case("Fails", [], "", [])])
+        failed = self.result('<testsuite><testcase classname="S" name="Fails"><failure message="gap missing" /></testcase></testsuite>')
+        with patch.object(build, "setup"), patch.object(build, "discover", return_value=[self.suite, later]):
+            with patch.object(build, "LAST_RUN", self.root / "last-run.json"), patch.object(build, "KEY_FRAMES", self.root / "shots"):
+                with contextlib.redirect_stdout(io.StringIO()):
+                    with patch.object(build, "run_process", side_effect=[self.passed, failed]):
+                        build.test(["--all", "--jobs", "1", "--with-key-frames"])
+                    with patch.object(build, "run_process", return_value=self.passed):
+                        build.test(["--all", "--jobs", "1", "--with-key-frames", "--case", "Fails"])
+                    with patch.object(build, "run_process", return_value=self.passed) as process:
+                        build.test(["--all", "--jobs", "1", "--with-key-frames", "--resume"])
+        # The check on the failed suite alone cleared the regression's key frames: both suites run again.
+        self.assertEqual(process.call_count, 2)
+
     def test_a_case_over_its_time_limit_fails(self) -> None:
         result = self.result('<testsuite><testcase classname="S" name="Slow" time="62" /></testsuite>')
         self.assertEqual(result.failures, ["[ERROR] S Slow took 62 s, longer than 60 s."])

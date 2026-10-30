@@ -2,15 +2,10 @@ namespace Scalpel.Tests.Support;
 
 /// <summary>Waiting for the game: physics steps, drawn frames and game time.</summary>
 public static class Frames {
-    /// <summary>A key frame run's window on a desktop takes no focus and lets the pointer through: losing focus to
-    /// another test's window would release the keys a test holds down, and the pointer passing over it would move the
-    /// hand. Tests send their input as events, which need neither. The game draws at the project's own size whatever
-    /// the window manager made of the window (a screen smaller than it shrinks it), as it does headless: the camera's
-    /// view, and so where the hand goes, mustn't depend on it.</summary>
+    /// <summary>In a key frame run the game draws at the project's own size whatever its window's, as it does headless:
+    /// the camera's view, and so where the hand goes, mustn't depend on the display.</summary>
     static Frames() {
         if (KeyFrames.Wanted() && DisplayServer.GetName() != "headless") {
-            Root.SetFlag(Window.Flags.NoFocus, true);
-            Root.SetFlag(Window.Flags.MousePassthrough, true);
             Root.ContentScaleMode = Window.ContentScaleModeEnum.Viewport;
         }
     }

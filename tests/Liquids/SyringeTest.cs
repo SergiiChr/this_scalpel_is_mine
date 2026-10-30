@@ -1114,8 +1114,11 @@ public class SyringeTest {
         var eye = me.Camera.GlobalPosition * new Vector3(1f, 0f, 1f);
         var shortOf = 0.2f;
         var toward = eye + ((under - eye).Normalized() * ((under - eye).Length() - shortOf));
-        var heldAt = me.ToGlobal(hand.LocalTarget);
-        hand.LocalTarget = me.ToLocal(toward + (Vector3.Up * heldAt.Y) - (hand.TipOffset(Syringe.Def.Length) * new Vector3(1f, 0f, 1f)));
+        var move = (toward - (hand.TipOffset(Syringe.Def.Length) * new Vector3(1f, 0f, 1f)) - me.ToGlobal(hand.LocalTarget))
+            * new Vector3(1f, 0f, 1f);
+        for (var i = 0; i < 10; i++) {
+            await _bench.Steer(PlayerInput.HandMotion(me, move / 10f) * Settings.MouseSensitivity);
+        }
         await Frames.Physics(40);
         AssertBool(InContainer(_bench.NeedleTarget(), bag))
             .OverrideFailureMessage($"needle_hand: held out under the IV bag as seen from the eyes, {shortOf * 100f:0} cm short of it "

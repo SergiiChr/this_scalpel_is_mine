@@ -27,7 +27,8 @@ accepts reach `main` with the next release.
 4. Run `./build.py test` (smoke) or `--all` (full regression) locally only for a wide core change that can break
    unrelated modules. Otherwise CI covers them. When suites fail, fix each and check the fix on that suite alone
    (`--tag`, `--case`); then the same command with `--resume` runs only the suites the last run didn't pass. Run it
-   whole again only when a fix was itself a wide change.
+   whole again only when a fix was itself a wide change. A check with `--with-key-frames` clears the regression's key
+   frames, so its resume runs whole: check without them unless the failure is in a key frame.
 5. For a user-visible change, take the key frames of its suites and check them against the baseline:
    `./build.py test --tag ... --with-key-frames`, then `./build.py screenshot_review --focused`. Review the sheets in
    `build/review/report.md` (follow [review-key-frames](../.claude/skills/review-key-frames/SKILL.md)). The comparison
@@ -56,7 +57,7 @@ other PR, and the next run verifies a newer commit that contains them. One relea
    it.
 2. Verify. Run `./build.py screenshot_review` on that commit, on a machine with a Wayland desktop and an NVIDIA GPU: the
    baseline is drawn by one, and a cloud container's software renderer changes nearly every key frame. A failed suite
-   is an issue (step 4), even when CI passed: the run stops there, so fix it and run again.
+   is an issue (step 4), even when CI passed.
    Start it detached after `./build.py setup` and check on it until it ends, keeping the session alive:
    `setsid nohup sh -c './build.py screenshot_review; echo "exit $?"' > build/release.log 2>&1 &`.
    Run no other `./build.py test` in that checkout meanwhile: it would replace the run's key frames and logs.

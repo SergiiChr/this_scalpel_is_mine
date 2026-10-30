@@ -227,8 +227,9 @@ Rolling rules live in `src/Data/QuirkRoller.cs`: 1-3 surgeon quirks, with 3 at l
 `[objectives]` the steps. The file name gives the id (`03_appendectomy.cfg` -> `appendectomy`), the number the order.
 `disabled=true` keeps a scenario out of the menu and lobby while its positive flow test is a known issue or broken; a
 comment beside it names the test. `debug_only=true` offers a sandbox (`90_skin_lab.cfg`) only in debug mode and keeps
-it out of the scenario tests. In debug mode the lobby's host can also tick "Skip quirks and run modifiers" (`Net.SkipQuirks`): the run then rolls no surgeon quirks, run
-modifiers or patient quirks beyond the scenario's fixed ones.
+it out of the scenario tests. In debug mode the lobby's host can also tick "Skip quirks and run modifiers"
+(`Net.SkipQuirks`): the run then rolls no surgeon quirks, run modifiers or patient quirks beyond the scenario's fixed
+ones.
 
 Objective step types (`src/Operation/ObjectiveChecks.cs`):
 `sanitize, irrigate, iv, anesthesia, sedate, local_block, mark, incise, extract, close, close_internal, stop_bleeding, stabilize,
@@ -557,8 +558,8 @@ One whose top lies under the skin is buried: jaws reach it only once its track i
 - **Needle in the patient sticks**: with Use tool held and the needle in a vein or tissue, its tip stays exactly where
   it went in (no tremor, no lift), and the mouse does nothing (see Needle view). Walked away from out of reach, the
   needle tears out: a short scratch, a bead of blood and pain (`Patient.NeedleTear()`). It then moves freely until
-  Use tool is let go. Releasing Use tool withdraws it immediately and leaves a visual blood bead exactly at the puncture, without
-  adding pain or a scratch (`ToolManager.RequestNeedleWithdrawal()`). Moving the hand afterward cannot tear it out.
+  Use tool is let go. Releasing Use tool withdraws it immediately and leaves a visual blood bead exactly at the
+  puncture, without adding pain or a scratch (`ToolManager.RequestNeedleWithdrawal()`). Moving the hand afterward cannot tear it out.
 - **Held facing you**: picked up, a syringe is held ready to inject (grip `syringe`): the index and middle fingers over
   its finger grip, the thumb on the plunger, following it in and out (`SurgeonHand.ReachPlunger()`). It points a
   little down and in toward the body's middle, the hand off to its outer side, with the printed scale turned toward

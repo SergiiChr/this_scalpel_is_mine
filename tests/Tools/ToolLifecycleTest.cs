@@ -27,16 +27,24 @@ public class ToolLifecycleTest {
         return driver;
     }
 
-    [TestCase(Timeout = Limits.Slow, Description = "KNOWN ISSUE: reaching for the skin stapler on the tray, the test driver's hand stops about 8 cm short of its grip, so the forceps beside it are the nearest tool and the grab would take them.")]
+    [TestCase(Timeout = Limits.Slow)]
     public async Task EveryHandheldToolIsPickedUpLoweredOntoTheSiteAndPutBack() =>
-        await KnownIssue.Expect("the hand can pick up skin_stapler through normal grabbing", PickUpEveryHandheldTool);
+        await PickUpHandheldTools(id => id != Stapler);
 
-    private async Task PickUpEveryHandheldTool() {
+    [TestCase(Timeout = Limits.Slow, Description = "KNOWN ISSUE: reaching for the skin stapler on the tray, the test driver's hand stops about 8 cm short of its grip, so the forceps beside it are the nearest tool and the grab would take them.")]
+    public async Task TheSkinStaplerIsPickedUpLoweredOntoTheSiteAndPutBack() =>
+        await KnownIssue.Expect($"the hand can pick up {Stapler} through normal grabbing", () => PickUpHandheldTools(id => id == Stapler));
+
+    private const string Stapler = "skin_stapler";
+
+    /// <summary>Every handheld tool <paramref name="which"/> takes is picked up from the tray, lowered onto the site and
+    /// put back, one after another in order of their ids.</summary>
+    private async Task PickUpHandheldTools(Func<string, bool> which) {
         var driver = await Begin();
         var surgery = driver.Surgery;
         SurgeryState.PatientIsAsleep(driver.Patient);
         var site = driver.SitePoint(new Vector2(0.5f, 0.5f));
-        foreach (var id in Db.Tools.Keys.Where(id => !Db.Tool(id)!.Fixed).Order(StringComparer.Ordinal)) {
+        foreach (var id in Db.Tools.Keys.Where(id => !Db.Tool(id)!.Fixed && which(id)).Order(StringComparer.Ordinal)) {
             // A fully stocked tray: whatever isn't on it is laid in its clear strip, and taken away again after.
             var extra = driver.FreeTools(id).Count == 0;
             if (extra) {

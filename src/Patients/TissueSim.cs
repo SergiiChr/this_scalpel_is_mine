@@ -1628,21 +1628,11 @@ public sealed partial class TissueSim {
 
     /// <summary>True when uv lies inside an opening: between the lips of a cut at least <paramref name="depth"/> deep,
     /// pulled open.</summary>
-    public bool IsOpen(Vector2 uv, TissueDepth depth = TissueDepth.Muscle) =>
-        (depth <= TissueDepth.Skin && Excised[Nearest(uv)]) || OpeningAt(uv, depth).Spring >= 0;
-
-    /// <summary>Where uv, inside an opening (IsOpen()), lies on the skin: on the cut that opened there, its lips drawn
-    /// back from it. Elsewhere, uv itself.</summary>
-    public Vector2 OntoCut(Vector2 uv, TissueDepth depth = TissueDepth.Skin) {
-        var (s, side) = OpeningAt(uv, depth);
-        return s < 0 ? uv : uv - ((UvOf(_springs[s].B) - UvOf(_springs[s].A)) * Size).Normalized() * side / Size;
-    }
-
-    /// <summary>The cut spring whose opening uv lies in, nearest its crossing across the cut, and how far across from
-    /// it (meters); -1 outside every opening.</summary>
-    private (int Spring, float Side) OpeningAt(Vector2 uv, TissueDepth depth) {
+    public bool IsOpen(Vector2 uv, TissueDepth depth = TissueDepth.Muscle) {
+        if (depth <= TissueDepth.Skin && Excised[Nearest(uv)]) {
+            return true;
+        }
         var cell = Mathf.Max(Size.X / ResX, Size.Y / ResY);
-        var best = (Spring: -1, Side: 0f);
         foreach (var s in _severed) {
             if (DepthOf(s) < depth) {
                 continue;
@@ -1656,12 +1646,11 @@ public sealed partial class TissueSim {
             var offset = (uv - CrossingUv(s)) * Size;
             var across = ((UvOf(_springs[s].B) - UvOf(_springs[s].A)) * Size).Normalized();
             var side = offset.Dot(across);
-            if (Mathf.Abs(side) < gap * 0.5f && (offset - across * side).Length() < cell * 0.6f
-                && (best.Spring < 0 || Mathf.Abs(side) < Mathf.Abs(best.Side))) {
-                best = (s, side);
+            if (Mathf.Abs(side) < gap * 0.5f && (offset - across * side).Length() < cell * 0.6f) {
+                return true;
             }
         }
-        return best;
+        return false;
     }
 
     private readonly record struct OpeningRegion(Vector2 Center, Vector2 Across, float HalfGap, float HalfLength, TissueDepth Depth);
