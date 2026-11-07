@@ -186,6 +186,46 @@ def _tweezers(m: Model, length: float, jaw_len: float, width: float, ringed: boo
         m.add(name, mesh, material, (0.0, 0.0, hinge_z))
 
 
+def _thumb_forceps(m: Model, length: float) -> None:
+    """Dressing forceps: two flat spring-steel arms welded together at the back, standing on edge (thin across X, the way
+    they open) like a real pair held in a pencil grip. Each arm widens into a grip with crosswise grooves on its outer
+    face and narrows to a fine tip; JawA carries one tooth and JawB two, meeting at the tip when closed."""
+    back = 0.02
+    hinge = (0.0, 0.0, back)
+    half = 0.0007
+    # Centre of each arm off the axis, and its half height along it: joined at the back, bowed apart through the grip,
+    # touching along the last two centimetres.
+    stations = [
+        (back, 0.0013, 0.0034),
+        (back - 0.012, 0.0024, 0.0038),
+        (-0.03, 0.0046, 0.0042),
+        (-0.06, 0.004, 0.0034),
+        (-length + 0.035, 0.0019, 0.0018),
+        (-length + 0.018, half, 0.0011),
+        (-length + 0.002, half, 0.0008),
+        (-length, half * 0.7, 0.0005),
+    ]
+    for name, side in (("JawA", 1.0), ("JawB", -1.0)):
+        arm = tube([(side * x, 0.0, z) for z, x, _ in stations], [(h, half) for _, _, h in stations], ring=12, exponent=4.0)
+        # Serrations: dark crosswise grooves on the outer face where the thumb and finger press.
+        grip_z, grip_x = [z for z, _, _ in stations[3::-1]], [x for _, x, _ in stations[3::-1]]
+        grooves = [
+            superellipsoid((0.0004, 0.0064, 0.0006), 0.4, (side * (float(np.interp(z, grip_z, grip_x)) + half), 0.0, z), detail=4)
+            for z in np.linspace(-0.052, -0.012, 16)
+        ]
+        # Tissue teeth on the inner face of the tip: one on JawA, two on JawB to either side of it.
+        teeth = [
+            superellipsoid((0.0009, 0.0004, 0.0005), 0.5, (side * 0.00005, y, -length + 0.0012), detail=4)
+            for y in ((0.0,) if side > 0 else (-0.00045, 0.00045))
+        ]
+        parts = [arm, *teeth]
+        if side > 0:
+            # The weld block that joins the arms at the back rides on JawA.
+            parts.append(superellipsoid((0.0042, 0.0068, 0.006), 0.3, (0.0, 0.0, back - 0.002), detail=6))
+        m.add(name, merge(*parts), "steel", hinge)
+        m.add(f"Serrations{name[-1]}", merge(*grooves), "dark_steel", hinge, name)
+
+
 def _needle(m: Model, length: float) -> None:
     _tweezers(m, length, 0.018, 0.0, True, "steel")
     # The sharp point is the tool's exact gameplay tip. Six millimetres back, the curve crosses the holder's axis
@@ -1528,7 +1568,7 @@ def build() -> list[Model]:
     lengths = tool_lengths()
     makers: dict[str, Callable[[Model, float], None]] = {
         "scalpel": _scalpel,
-        "forceps": lambda m, length: _tweezers(m, length, 0.0, 0.006, False, "steel"),
+        "forceps": _thumb_forceps,
         "hemostat": lambda m, length: _tweezers(m, length, 0.035, 0.0, True, "steel"),
         "retractor": _retractor,
         "gelpi": _gelpi,
