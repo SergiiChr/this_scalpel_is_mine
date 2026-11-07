@@ -226,6 +226,56 @@ def _thumb_forceps(m: Model, length: float) -> None:
         m.add(f"Serrations{name[-1]}", merge(*grooves), "dark_steel", hinge, name)
 
 
+def _hemostat(m: Model, length: float) -> None:
+    """A Kelly hemostat: ring handles, a ratchet that locks it shut, a box joint and straight serrated jaws.
+    It opens in the XZ plane about the joint like scissors, so each arm crosses there: JawA's ring is on +X, its jaw on
+    -X, and the game's turn of JawA swings its jaw away from JawB's."""
+    joint = -length + 0.035
+    half_y = 0.0021
+    for name, side in (("JawA", 1.0), ("JawB", -1.0)):
+        shank = tube(
+            [(side * 0.0068, 0.0, 0.036), (side * 0.0052, 0.0, 0.02), (side * 0.0024, 0.0, joint + 0.02), (side * 0.0009, 0.0, joint + 0.006)],
+            [(half_y, 0.0014), (half_y, 0.0014), (half_y, 0.0015), (half_y, 0.0016)],
+            ring=8,
+            exponent=4.0,
+            smooth=3,
+        )
+        # The jaw carries on across the joint to the far side, so the closed jaws meet face to face on the axis.
+        cross = tube(
+            [(side * 0.0009, 0.0, joint + 0.006), (-side * 0.0009, 0.0, joint - 0.004), (-side * 0.0011, 0.0, joint - 0.008)],
+            [(half_y, 0.0016), (half_y, 0.0012), (0.0018, 0.0011)],
+            ring=8,
+            exponent=4.0,
+            smooth=4,
+        )
+        # The straight grip is lofted without smoothing so its crosswise V grooves stay sharp.
+        # Each groove is a dip in the section's height, on the jaw's own taper, so it is cut in rather than stuck on.
+        grip_z = [joint - 0.008]
+        for z in np.linspace(joint - 0.011, -length + 0.002, 9):
+            grip_z += [z + 0.0004, z, z - 0.0004]
+        grip_z.append(-length)
+        t = (np.array(grip_z) - grip_z[0]) / (grip_z[-1] - grip_z[0])
+        dip = np.array([0.0] + [0.0, 0.00025, 0.0] * 9 + [0.0])
+        grip = tube(
+            [(-side * (0.0011 - 0.0003 * k), 0.0, z) for k, z in zip(t, grip_z, strict=True)],
+            [(0.0018 - 0.0007 * k - d, 0.0011 - 0.0004 * k) for k, d in zip(t, dip, strict=True)],
+            ring=8,
+            exponent=4.0,
+            smooth=1,
+        )
+        jaw = merge(cross, grip)
+        ring = torus(0.0085, 0.0017, (side * 0.0135, 0.0, 0.044), "y", (20, 6))
+        # Ratchet: a toothed tab on each shank, JawA's above JawB's, interlocking when shut.
+        teeth = [moved(trimesh.creation.box((0.0036, 0.0012, 0.0011)), (side * 0.0034, side * 0.0007, 0.024 + k * 0.0016)) for k in range(4)]
+        parts = [shank, jaw, ring, *teeth]
+        if side > 0:
+            # The box lock JawB passes through, with the rivet's heads on both faces.
+            parts.append(superellipsoid((0.006, 0.0047, 0.0082), 0.25, (0.0, 0.0, joint), detail=4))
+        m.add(name, merge(*parts), "steel", (0.0, 0.0, joint))
+    heads = [cylinder(0.0016, (0.0, y, joint), (0.0, y + 0.0004 * np.sign(y), joint), 8) for y in (0.0023, -0.0023)]
+    m.add("Rivet", merge(*heads), "dark_steel", (0.0, 0.0, joint), "JawA")
+
+
 def _needle(m: Model, length: float) -> None:
     _tweezers(m, length, 0.018, 0.0, True, "steel")
     # The sharp point is the tool's exact gameplay tip. Six millimetres back, the curve crosses the holder's axis
@@ -1569,7 +1619,7 @@ def build() -> list[Model]:
     makers: dict[str, Callable[[Model, float], None]] = {
         "scalpel": _scalpel,
         "forceps": _thumb_forceps,
-        "hemostat": lambda m, length: _tweezers(m, length, 0.035, 0.0, True, "steel"),
+        "hemostat": _hemostat,
         "retractor": _retractor,
         "gelpi": _gelpi,
         "needle": _needle,

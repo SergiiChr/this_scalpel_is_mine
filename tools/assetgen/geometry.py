@@ -201,8 +201,8 @@ def extrude(outline: Sequence[tuple[float, float]], depth: float, faceted: bool 
     return mesh
 
 
-def torus(major: float, minor: float, center: Sequence[float] = (0, 0, 0), axis: str = "y") -> trimesh.Trimesh:
-    mesh = cast(trimesh.Trimesh, trimesh.creation.torus(major_radius=major, minor_radius=minor, major_sections=32, minor_sections=12))
+def torus(major: float, minor: float, center: Sequence[float] = (0, 0, 0), axis: str = "y", sections: tuple[int, int] = (32, 12)) -> trimesh.Trimesh:
+    mesh = cast(trimesh.Trimesh, trimesh.creation.torus(major_radius=major, minor_radius=minor, major_sections=sections[0], minor_sections=sections[1]))
     if axis == "x":
         mesh.apply_transform(trimesh.transformations.rotation_matrix(np.pi / 2, [0, 1, 0]))
     elif axis == "y":
