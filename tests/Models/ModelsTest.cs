@@ -515,7 +515,7 @@ public class ModelsTest {
             .IsNull();
         var def = Db.Tools["needle"];
         var tip = model.GlobalTransform * new Vector3(0f, 0f, -def.Length);
-        var clamp = model.GlobalTransform * new Vector3(0f, 0f, -def.Length + 0.006f);
+        var clamp = model.GlobalTransform * new Vector3(0f, 0f, -def.Length + 0.003f);
         AssertFloat(needle!.GlobalPosition.DistanceTo(tip))
             .OverrideFailureMessage("the curved needle's sharp end is the gameplay tip")
             .IsLess(0.0001f);
