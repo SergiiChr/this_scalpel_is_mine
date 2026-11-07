@@ -232,7 +232,9 @@ public partial class SurgicalTool : RigidBody3D {
         ContactMonitor = true;
         MaxContactsReported = 2;
         _model = ModelSlot.InstantiateTool(def, this);
-        if (def.Action == "cut" && _model.FindChild("Blade", true, false) is MeshInstance3D blade) {
+        // A hidden Cutter, where a model has one, is the shape cutting was tuned on; otherwise the blade cuts as drawn.
+        if (def.Action == "cut" && (_model.FindChild("Cutter", true, false) ?? _model.FindChild("Blade", true, false))
+                is MeshInstance3D blade) {
             Blade = new BladeContact(blade.Mesh, GlobalTransform.AffineInverse() * blade.GlobalTransform);
         }
         // The collision box wraps the model itself, so a bag or a flask rests on the tray instead of sinking into it.

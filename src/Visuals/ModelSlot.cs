@@ -24,6 +24,10 @@ public static class ModelSlot {
                 var node = scene.Instantiate<Node3D>();
                 parent.AddChild(node);
                 Toonify(node, overrides);
+                // A blade's cutting shape is only for the cut (SurgicalTool), never drawn.
+                if (node.FindChild("Cutter", true, false) is Node3D cutter) {
+                    cutter.Visible = false;
+                }
                 return node;
             }
         }

@@ -59,20 +59,110 @@ def flat(outline: list[tuple[float, float]], thickness: float, plane: str = "yz"
     return mesh
 
 
-def _scalpel(m: Model, length: float, dull: bool) -> None:
-    """A scalpel, or with dull a switchblade. The blade stands in the YZ plane, edge down, and the flat handle
-    lies in the same plane (thin across X), like a real one: the game cuts along where that plane meets the skin.
-    A scalpel is a #3 handle with a #10 blade, about 4 cm of it showing; the switchblade's blade is most of its length."""
-    start = -0.035 if dull else -length + 0.04
-    back = length * 0.62 - 0.035 if dull else 0.075
+def _side_plate(outline: list[tuple[float, float]], thickness: float) -> trimesh.Trimesh:
+    """A plate in the YZ plane, thin across X. Outline points are (z, y)."""
+    # A quarter turn the other way would point the outline back through the hand.
+    return rotated(extrude(outline, thickness), -np.pi / 2, Y)
+
+
+def _bezier(a: tuple[float, float], control: tuple[float, float], b: tuple[float, float], count: int) -> list[tuple[float, float]]:
+    """Points along a quadratic curve from a to b, a included, b left out so curves chain."""
+    return [
+        ((1 - t) ** 2 * a[0] + 2 * (1 - t) * t * control[0] + t * t * b[0], (1 - t) ** 2 * a[1] + 2 * (1 - t) * t * control[1] + t * t * b[1])
+        for t in np.linspace(0.0, 1.0, count, endpoint=False)
+    ]
+
+
+def _scalpel(m: Model, length: float) -> None:
+    """A #3 handle with a #10 blade. Blade and flat handle stand in the YZ plane (thin across X), edge down: the game
+    cuts along where that plane meets the skin, and the blade starts at the handle's shoulder.
+    The handle is a steel bar with a narrow neck, ribbed thumb rest and a ruler on its back half.
+    The blade has a straight spine, a long round belly up to the point and a bright ground edge; the handle's tongue
+    shows through its slot."""
+    shoulder = -length + 0.04
+    back = 0.075
+    # Half width of the bar along it: narrow neck behind the blade, full grip, slightly narrower rounded end.
+    widths = [
+        (shoulder, 0.0024),
+        (shoulder + 0.006, 0.0026),
+        (shoulder + 0.016, 0.0046),
+        (-0.01, 0.0049),
+        (0.05, 0.0046),
+        (back - 0.004, 0.0043),
+        (back, 0.0016),
+    ]
+    # Half the bar's thickness: thicker than a real 2.5 mm handle, so the scalpel lies on the tray as wide as before
+    # and keeps the pickup pose that cutting checks were tuned on.
+    half = 0.00212
+    bar = tube([(0.0, 0.0, z) for z, _ in widths], [(w, half) for _, w in widths], ring=16, exponent=5.0, smooth=4)
+    # Thumb rest: crosswise ribs standing on both faces.
+    ribs = [
+        superellipsoid((0.0007, 0.0074, 0.0011), 0.35, (side * half, 0.0, z), detail=5)
+        for z in np.linspace(shoulder + 0.02, shoulder + 0.045, 9)
+        for side in (1.0, -1.0)
+    ]
+    m.add("Handle", merge(bar, *ribs), "steel")
+    # Etched centimetre ruler along the top edge, on both faces.
+    ticks = [
+        superellipsoid((0.0003, 0.0025 if i % 2 == 0 else 0.0015, 0.0004), 0.5, (side * half, 0.0045 - (0.00125 if i % 2 == 0 else 0.00075), z), detail=3)
+        for i, z in enumerate(np.arange(0.005, back - 0.008, 0.005))
+        for side in (1.0, -1.0)
+    ]
+    m.add("Scale", merge(*ticks), "dark_steel", (0.0, 0.0, 0.0), "Handle")
+    # A #10 blade: the spine runs straight almost to the point, the belly sweeps up to it from well back.
+    # The point and belly sit a millimetre below the handle's centre line, where cutting depth was tuned.
+    tip = (-length, -0.001)
+    spine = 0.0036
+    belly = -0.006
+    heel = -0.004
+    edge = [
+        *_bezier(tip, (-length + 0.007, belly + 0.0015), (-length + 0.02, belly), 10),
+        *_bezier((-length + 0.02, belly), (shoulder - 0.01, belly + 0.0002), (shoulder - 0.002, heel), 4),
+    ]
+    # The spine gets a point above every edge point: the game keeps each crosswise section's top out of intact skin
+    # (src/Tools/BladeContact.cs), and an edge point alone in its section would count as a top.
+    nose = np.array(_bezier((-length + 0.008, spine), (-length + 0.002, spine - 0.0004), tip, 12)[::-1])
+    top = [(z, float(np.interp(z, nose[:, 0], nose[:, 1], right=spine))) for z, _ in edge[1:]]
+    outline = [(shoulder, heel), (shoulder, spine - 0.0004), (shoulder - 0.001, spine), *reversed(top), *edge]
+    # The keyhole slot the handle's tongue rides in, wide at the back where the blade goes on.
+    slot = [
+        (shoulder - 0.0015, 0.0013),
+        (shoulder - 0.0045, 0.0013),
+        (shoulder - 0.0055, 0.0008),
+        (shoulder - 0.015, 0.0008),
+        (shoulder - 0.0156, 0.0),
+        (shoulder - 0.015, -0.0008),
+        (shoulder - 0.0055, -0.0008),
+        (shoulder - 0.0045, -0.0013),
+        (shoulder - 0.0015, -0.0013),
+    ]
+    blade = trimesh.creation.extrude_polygon(Polygon(outline, [slot]), 0.0008)
+    blade.apply_translation([0.0, 0.0, -0.0004])
+    blade.unmerge_vertices()
+    m.add("Blade", rotated(blade, -np.pi / 2, Y), "steel")
+    # What the game cuts with (src/Tools/SurgicalTool.cs), hidden: the earlier straight-sided blade, which every cutting
+    # depth was tuned on. Its crosswise sections decide how deep a tilted blade may go under intact skin.
+    cutter = [(shoulder, 0.004), (shoulder - 0.012, 0.006), (-length + 0.015, 0.004), tip, (-length + 0.02, belly), (shoulder, heel)]
+    m.add("Cutter", _side_plate(cutter, 0.0008), "steel", (0.0, 0.0, 0.0), "Blade")
+    # The ground edge: a bright band along the belly up to the point, standing just proud of the blade.
+    inner = [(z + 0.0006, y + 0.0015) for z, y in reversed(edge[1:-1])]
+    m.add("Edge", _side_plate([*edge, (shoulder - 0.0035, heel + 0.0012), *inner], 0.0009), "chrome", (0.0, 0.0, 0.0), "Blade")
+    # The handle's tongue under the blade, with the raised rib that fills the slot.
+    tongue = [(shoulder + 0.001, -0.0022), (shoulder - 0.014, -0.0015), (shoulder - 0.017, 0.0), (shoulder - 0.014, 0.0015), (shoulder + 0.001, 0.0022)]
+    rib = [(shoulder + 0.001, 0.0012), *[(z, y * 0.9) for z, y in slot[1:-1]], (shoulder + 0.001, -0.0012)]
+    m.add("Fitting", merge(_side_plate(tongue, 0.0012), _side_plate(rib, 0.0018)), "steel", (0.0, 0.0, 0.0), "Handle")
+
+
+def _switchblade(m: Model, length: float) -> None:
+    """A switchblade: a black handle and a dark blade most of its length long, standing in the YZ plane edge down."""
+    start = -0.035
+    back = length * 0.62 - 0.035
     handle = superellipsoid((0.004, 0.011, back - start), 0.3, (0.0, 0.0, (back + start) * 0.5))
     grip = merge(*[superellipsoid((0.005, 0.012, 0.003), 0.4, (0.0, 0.0, z)) for z in np.linspace(-0.02, 0.02, 6)])
-    m.add("Handle", merge(handle, grip), "black_plastic" if dull else "steel")
+    m.add("Handle", merge(handle, grip), "black_plastic")
     # Straight spine on top, the belly of the edge curving down to the point.
     edge = [(start, 0.004), (start - 0.012, 0.006), (-length + 0.015, 0.004), (-length, -0.001), (-length + 0.02, -0.006), (start, -0.004)]
-    blade = extrude([(z, y) for z, y in edge], 0.0012 if dull else 0.0008)
-    # The outline runs along -Z from the handle; a quarter turn the other way would point the blade back through the hand.
-    m.add("Blade", rotated(blade, -np.pi / 2, Y), "dark_steel" if dull else "chrome")
+    m.add("Blade", _side_plate(edge, 0.0012), "dark_steel")
 
 
 def _tweezers(m: Model, length: float, jaw_len: float, width: float, ringed: bool, material: str) -> None:
@@ -1393,7 +1483,7 @@ def _iv_catheter(m: Model, length: float) -> None:
 
 def _misc(m: Model, kind: str, length: float) -> None:
     if kind == "switchblade":
-        _scalpel(m, length, True)
+        _switchblade(m, length)
     elif kind == "lighter":
         m.add("Body", superellipsoid((0.022, 0.012, length * 0.75), 0.35, (0.0, 0.0, -length * 0.35)), "tint")
         m.add("Hood", superellipsoid((0.018, 0.011, length * 0.22), 0.35, (0.0, 0.0, -length * 0.82)), "chrome")
@@ -1437,7 +1527,7 @@ def _misc_maker(kind: str, model: Model, length: float) -> None:
 def build() -> list[Model]:
     lengths = tool_lengths()
     makers: dict[str, Callable[[Model, float], None]] = {
-        "scalpel": lambda m, length: _scalpel(m, length, False),
+        "scalpel": _scalpel,
         "forceps": lambda m, length: _tweezers(m, length, 0.0, 0.006, False, "steel"),
         "hemostat": lambda m, length: _tweezers(m, length, 0.035, 0.0, True, "steel"),
         "retractor": _retractor,
