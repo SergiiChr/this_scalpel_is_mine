@@ -77,7 +77,7 @@ def _scalpel(m: Model, length: float) -> None:
     """A #3 handle with a #10 blade. Blade and flat handle stand in the YZ plane (thin across X), edge down: the game
     cuts along where that plane meets the skin, and the blade starts at the handle's shoulder.
     The handle is a steel bar with a narrow neck, ribbed thumb rest and a ruler on its back half.
-    The blade has a straight spine, a long round belly up to the point and a bright ground edge; the handle's tongue
+    The blade has a gently humped spine, a long belly up to the point and a bright ground edge; the handle's tongue
     shows through its slot."""
     shoulder = -length + 0.04
     back = 0.075
@@ -91,8 +91,8 @@ def _scalpel(m: Model, length: float) -> None:
         (back - 0.004, 0.0043),
         (back, 0.0016),
     ]
-    # Half the bar's thickness: thicker than a real 2.5 mm handle, so the scalpel lies on the tray as wide as before
-    # and keeps the pickup pose that cutting checks were tuned on.
+    # Half the bar's thickness, 4.2 mm in all: thicker than a real 2.5 mm handle, because how the scalpel lies on the
+    # tray sets its pickup pose, which cutting is tuned on.
     half = 0.00212
     bar = tube([(0.0, 0.0, z) for z, _ in widths], [(w, half) for _, w in widths], ring=16, exponent=5.0, smooth=4)
     # Thumb rest: crosswise ribs standing on both faces.
@@ -109,22 +109,16 @@ def _scalpel(m: Model, length: float) -> None:
         for side in (1.0, -1.0)
     ]
     m.add("Scale", merge(*ticks), "dark_steel", (0.0, 0.0, 0.0), "Handle")
-    # A #10 blade: the spine runs straight almost to the point, the belly sweeps up to it from well back.
-    # The point and belly sit a millimetre below the handle's centre line, where cutting depth was tuned.
+    # A #10 blade: the spine rises a little behind the point and falls to the shoulder, the belly runs up to the point
+    # from well back.
+    # The game cuts with this outline (src/Tools/BladeContact.cs), and every cutting depth is tuned on it: one point per
+    # corner, so each crosswise section's top is on the spine.
+    # The point and belly sit a millimetre below the handle's centre line.
     tip = (-length, -0.001)
-    spine = 0.0036
-    belly = -0.006
-    heel = -0.004
-    edge = [
-        *_bezier(tip, (-length + 0.007, belly + 0.0015), (-length + 0.02, belly), 10),
-        *_bezier((-length + 0.02, belly), (shoulder - 0.01, belly + 0.0002), (shoulder - 0.002, heel), 4),
-    ]
-    # The spine gets a point above every edge point: the game keeps each crosswise section's top out of intact skin
-    # (src/Tools/BladeContact.cs), and an edge point alone in its section would count as a top.
-    nose = np.array(_bezier((-length + 0.008, spine), (-length + 0.002, spine - 0.0004), tip, 12)[::-1])
-    top = [(z, float(np.interp(z, nose[:, 0], nose[:, 1], right=spine))) for z, _ in edge[1:]]
-    outline = [(shoulder, heel), (shoulder, spine - 0.0004), (shoulder - 0.001, spine), *reversed(top), *edge]
-    # The keyhole slot the handle's tongue rides in, wide at the back where the blade goes on.
+    belly = (-length + 0.02, -0.006)
+    heel = (shoulder, -0.004)
+    m.add("Blade", _side_plate([(shoulder, 0.004), (shoulder - 0.012, 0.006), (-length + 0.015, 0.004), tip, belly, heel], 0.0008), "steel")
+    # The slot in the blade that the handle's tongue rides in, wide at the back where the blade goes on.
     slot = [
         (shoulder - 0.0015, 0.0013),
         (shoulder - 0.0045, 0.0013),
@@ -136,18 +130,11 @@ def _scalpel(m: Model, length: float) -> None:
         (shoulder - 0.0045, -0.0013),
         (shoulder - 0.0015, -0.0013),
     ]
-    blade = trimesh.creation.extrude_polygon(Polygon(outline, [slot]), 0.0008)
-    blade.apply_translation([0.0, 0.0, -0.0004])
-    blade.unmerge_vertices()
-    m.add("Blade", rotated(blade, -np.pi / 2, Y), "steel")
-    # What the game cuts with (src/Tools/SurgicalTool.cs), hidden: the earlier straight-sided blade, which every cutting
-    # depth was tuned on. Its crosswise sections decide how deep a tilted blade may go under intact skin.
-    cutter = [(shoulder, 0.004), (shoulder - 0.012, 0.006), (-length + 0.015, 0.004), tip, (-length + 0.02, belly), (shoulder, heel)]
-    m.add("Cutter", _side_plate(cutter, 0.0008), "steel", (0.0, 0.0, 0.0), "Blade")
+    edge = [*_bezier(tip, tip, belly, 6), *_bezier(belly, belly, heel, 3), heel]
     # The ground edge: a bright band along the belly up to the point, standing just proud of the blade.
     inner = [(z + 0.0006, y + 0.0015) for z, y in reversed(edge[1:-1])]
-    m.add("Edge", _side_plate([*edge, (shoulder - 0.0035, heel + 0.0012), *inner], 0.0009), "chrome", (0.0, 0.0, 0.0), "Blade")
-    # The handle's tongue under the blade, with the raised rib that fills the slot.
+    m.add("Edge", _side_plate([*edge, (shoulder - 0.0035, heel[1] + 0.0012), *inner], 0.0009), "chrome", (0.0, 0.0, 0.0), "Blade")
+    # The handle's tongue under the blade, with the raised rib that shows through the slot.
     tongue = [(shoulder + 0.001, -0.0022), (shoulder - 0.014, -0.0015), (shoulder - 0.017, 0.0), (shoulder - 0.014, 0.0015), (shoulder + 0.001, 0.0022)]
     rib = [(shoulder + 0.001, 0.0012), *[(z, y * 0.9) for z, y in slot[1:-1]], (shoulder + 0.001, -0.0012)]
     m.add("Fitting", merge(_side_plate(tongue, 0.0012), _side_plate(rib, 0.0018)), "steel", (0.0, 0.0, 0.0), "Handle")
@@ -184,7 +171,8 @@ def _thumb_forceps(m: Model, length: float) -> None:
         (-length + 0.002, half, 0.0008),
         (-length, half * 0.7, 0.0005),
     ]
-    for name, side in (("JawA", 1.0), ("JawB", -1.0)):
+    # JawA is on -X: the game turns it toward -X to open (ToolAnimator), so the tips swing apart.
+    for name, side in (("JawA", -1.0), ("JawB", 1.0)):
         arm = tube([(side * x, 0.0, z) for z, x, _ in stations], [(h, half) for _, _, h in stations], ring=12, exponent=4.0)
         # Serrations: dark crosswise grooves on the outer face where the thumb and finger press.
         grip_z, grip_x = [z for z, _, _ in stations[3::-1]], [x for _, x, _ in stations[3::-1]]
@@ -195,10 +183,10 @@ def _thumb_forceps(m: Model, length: float) -> None:
         # Tissue teeth on the inner face of the tip: one on JawA, two on JawB to either side of it.
         teeth = [
             superellipsoid((0.0009, 0.0004, 0.0005), 0.5, (side * 0.00005, y, -length + 0.0012), detail=4)
-            for y in ((0.0,) if side > 0 else (-0.00045, 0.00045))
+            for y in ((0.0,) if name == "JawA" else (-0.00045, 0.00045))
         ]
         parts = [arm, *teeth]
-        if side > 0:
+        if name == "JawA":
             # The weld block that joins the arms at the back rides on JawA.
             parts.append(superellipsoid((0.0042, 0.0068, 0.006), 0.3, (0.0, 0.0, back - 0.002), detail=6))
         m.add(name, merge(*parts), "steel", hinge)
@@ -219,7 +207,7 @@ def _ring_clamp(m: Model, length: float, jaw_len: float, grooves: int, tip: tupl
     half_y = 0.0021
     for name, side in (("JawA", 1.0), ("JawB", -1.0)):
         shank = tube(
-            [(side * 0.0068, 0.0, 0.036), (side * 0.0052, 0.0, 0.02), (side * 0.0024, 0.0, joint + 0.02), (side * 0.0009, 0.0, joint + 0.006)],
+            [(side * 0.0075, 0.0, 0.053), (side * 0.0058, 0.0, 0.03), (side * 0.0024, 0.0, joint + 0.02), (side * 0.0009, 0.0, joint + 0.006)],
             [(half_y, 0.0014), (half_y, 0.0014), (half_y, 0.0015), (half_y, 0.0016)],
             ring=8,
             exponent=4.0,
@@ -249,9 +237,13 @@ def _ring_clamp(m: Model, length: float, jaw_len: float, grooves: int, tip: tupl
             smooth=1,
         )
         jaw = merge(cross, grip)
-        ring = torus(0.0085, 0.0017, (side * 0.0135, 0.0, 0.044), "y", (20, 6))
-        # Ratchet: a toothed tab on each shank, JawA's above JawB's, interlocking when shut.
-        teeth = [moved(trimesh.creation.box((0.0036, 0.0012, 0.0011)), (side * 0.0034, side * 0.0007, 0.024 + k * 0.0016)) for k in range(4)]
+        # The rings sit where the "rings" and "needle" grips put the thumb and ring finger (GripStyle.cs).
+        ring = torus(0.0085, 0.0017, (side * 0.0135, 0.0, 0.06), "y", (20, 6))
+        # Ratchet: a toothed tab from each shank across the axis, JawA's above JawB's and half a tooth along, so the
+        # teeth interlock when shut.
+        teeth = [
+            moved(trimesh.creation.box((0.0068, 0.0012, 0.0008)), (side * 0.0031, side * 0.0006, 0.037 + k * 0.0016 + (side < 0) * 0.0008)) for k in range(4)
+        ]
         parts = [shank, jaw, *teeth]
         if side > 0:
             # The box lock JawB passes through, with the rivet's heads on both faces.
@@ -264,15 +256,17 @@ def _ring_clamp(m: Model, length: float, jaw_len: float, grooves: int, tip: tupl
 
 def _needle(m: Model, length: float) -> None:
     """A Mayo-Hegar needle holder: short stout jaws and gold rings, the mark of tungsten carbide jaw inserts."""
-    _ring_clamp(m, length, 0.02, 3, (0.0015, 0.001), "gold")
-    # The curve crosses the holder's axis between both jaws three millimetres back from their tip and sweeps forward and
-    # down past it, the way a loaded needle is held ready to bite. The node sits on the tool's gameplay tip.
+    # The jaws stop short of the tool's tip, so the loaded needle's sharp end reaches out ahead of them.
+    reach = 0.006
+    _ring_clamp(m, length - reach, 0.02, 3, (0.0015, 0.001), "gold")
+    # The sharp end is the gameplay tip and points forward along the holder.
+    # From there the curve runs back between both jaws, three millimetres behind their tip, and hangs down under them.
     radius = 0.014
-    clamp_back = 0.003
+    clamp_back = reach + 0.003
     center_y = -np.sqrt(radius * radius - (clamp_back * 0.5) ** 2)
     center_z = -length + clamp_back * 0.5
-    clamp_angle = np.arctan2(clamp_back * 0.5, -center_y)
-    arc = [(0.0, center_y + radius * np.cos(t), center_z + radius * np.sin(t)) for t in np.linspace(clamp_angle + 0.25, -1.9, 14)]
+    tip_angle = np.arctan2(-clamp_back * 0.5, -center_y)
+    arc = [(0.0, center_y + radius * np.cos(t), center_z + radius * np.sin(t)) for t in np.linspace(tip_angle, 2.6, 14)]
     m.add("SutureNeedle", tube(arc, [(0.0007, 0.0007)] * len(arc), ring=6, up=(1.0, 0.0, 0.0), smooth=2), "chrome", (0.0, 0.0, -length), "JawA")
 
 

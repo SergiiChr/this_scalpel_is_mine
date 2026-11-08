@@ -16,8 +16,8 @@ namespace Scalpel.Tests.Support;
 /// --only=sedation). --only=&lt;case&gt; renders one.</item>
 /// <item>--menus: the main menu's pages and the lobby.</item>
 /// <item>--prop=&lt;key&gt;: one room prop where it stands, from the front, both corners, above and close up.</item>
-/// <item>--tool=&lt;id&gt;: one tool's model over the patient from both sides, the top, an oblique and its working end close
-/// up, for reviewing a model change.</item>
+/// <item>--tool=&lt;id&gt;: one tool's model over the patient from both sides, the top, an oblique and its working end
+/// close up, for reviewing a model change.</item>
 /// </list>
 /// Without those, --only=monitor stops after the monitor views and --only=site after the site close ups.
 /// </summary>

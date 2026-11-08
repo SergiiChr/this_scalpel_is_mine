@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 import trimesh
 
-from .geometry import Model, cylinder, ellipsoid, lathe, merge, moved, rotated, rounded_slab, superellipsoid, torus, tube
+from .geometry import Model, cylinder, ellipsoid, lathe, merge, moved, rotated, rounded_slab, scaled, superellipsoid, torus, tube
 
 TABLE_HEIGHT = 0.85
 # The rail across the table's head end that the patient card hangs on: its hook (CardHook in src/World/Room.cs) goes
@@ -25,6 +25,8 @@ MONITOR_POLE = (1.075, -0.2)
 # Small trays on the instrument tray for scalpel and forceps, and for cotton pads: corner x, z, width, depth from the
 # tray's middle. Same as "instruments" and "swabs" in Room.TrayZones (src/World/Room.cs).
 SMALL_TRAYS = ((0.09, -0.36, 0.16, 0.26), (0.14, -0.07, 0.06, 0.06))
+# The instrument tray's casters are this size of a cart's, their plates just under its legs' ends.
+CASTER_SIZE = 0.62
 # Hand-made models some props are built from. The .gdignore there keeps Godot from importing them as game assets.
 SOURCES = Path(__file__).resolve().parent / "sources"
 # glove_box.glb node -> part and palette material. Every other node is a glove.
@@ -51,20 +53,27 @@ def _block(size: tuple[float, float, float], center: tuple[float, float, float])
     return superellipsoid(size, 0.06, center, detail=6)
 
 
-def _caster(x: float, z: float) -> list[trimesh.Trimesh]:
-    """A swivel caster under a corner: its plate, the fork either side of the wheel and the stem, steel."""
-    return [
-        _block((0.06, 0.008, 0.06), (x, 0.096, z)),
-        cylinder(0.012, (x, 0.092, z), (x, 0.075, z), 10),
-        _block((0.005, 0.05, 0.04), (x - 0.022, 0.06, z + 0.012)),
-        _block((0.005, 0.05, 0.04), (x + 0.022, 0.06, z + 0.012)),
-        cylinder(0.006, (x - 0.026, 0.045, z + 0.02), (x + 0.026, 0.045, z + 0.02), 8),
+def _caster(x: float, z: float, size: float = 1.0, heading: float = 0.0) -> list[trimesh.Trimesh]:
+    """A swivel caster under a corner: its plate, the fork either side of the wheel and the stem, steel.
+    size scales it from the floor up; heading turns it about its stem, from rolling along Z."""
+    parts = [
+        _block((0.06, 0.008, 0.06), (0.0, 0.096, 0.0)),
+        cylinder(0.012, (0.0, 0.092, 0.0), (0.0, 0.075, 0.0), 10),
+        _block((0.005, 0.05, 0.04), (-0.022, 0.06, 0.012)),
+        _block((0.005, 0.05, 0.04), (0.022, 0.06, 0.012)),
+        cylinder(0.006, (-0.026, 0.045, 0.02), (0.026, 0.045, 0.02), 8),
     ]
+    return [_placed(part, x, z, size, heading) for part in parts]
 
 
-def _wheel(x: float, z: float) -> trimesh.Trimesh:
-    """The rubber wheel in a caster's fork."""
-    return cylinder(0.045, (x - 0.014, 0.045, z + 0.02), (x + 0.014, 0.045, z + 0.02), 20)
+def _wheel(x: float, z: float, size: float = 1.0, heading: float = 0.0) -> trimesh.Trimesh:
+    """The rubber wheel in a caster's fork, sized and turned as the caster."""
+    return _placed(cylinder(0.045, (-0.014, 0.045, 0.02), (0.014, 0.045, 0.02), 20), x, z, size, heading)
+
+
+def _placed(part: trimesh.Trimesh, x: float, z: float, size: float, heading: float) -> trimesh.Trimesh:
+    """A caster part built about its stem on the floor, scaled, turned about the stem and moved to (x, z)."""
+    return moved(rotated(scaled(part, (size, size, size)), heading, (0.0, 1.0, 0.0)), (x, 0.0, z))
 
 
 def _operating_table() -> Model:
@@ -103,7 +112,7 @@ def _operating_table() -> Model:
     hook_path = [(pendant_x, low - 0.06, pendant_z), (pendant_x, low + 0.02, pendant_z), (pendant_x, low + 0.02, pendant_z - 0.02)]
     hook = tube(hook_path, [(0.003, 0.003)] * 3, ring=6)
     body = superellipsoid((0.06, 0.15, 0.03), 0.3, (pendant_x, low - 0.135, pendant_z + 0.005), detail=4)
-    cord_path = [(pendant_x, low - 0.21, pendant_z), (pendant_x + 0.1, 0.3, pendant_z - 0.02), (-0.4, 0.12, 0.25), (-0.33, 0.08, 0.2)]
+    cord_path = [(pendant_x, low - 0.21, pendant_z), (pendant_x + 0.1, 0.3, pendant_z - 0.02), (-0.4, 0.1, 0.25), (-0.32, 0.04, 0.2)]
     cord = tube(cord_path, [(0.004, 0.004)] * 4, ring=6)
     m.add("Pendant", merge(body, hook, cord), "black_plastic")
     m.add("Pedals", merge(*pedals), "black_plastic")
@@ -114,13 +123,16 @@ def _instrument_tray() -> Model:
     """A steel instrument table on one telescoping column: a sheet tray with a rolled rim over two rails, a height collar
     with its knob, and a five-leg base on casters. Its top stays at TraySurface (src/World/Room.cs), where tools lie."""
     m = Model("props", "instrument_tray")
-    legs = []
+    legs, wheels = [], []
     for i in range(5):
         a = i * 2 * np.pi / 5 + np.pi / 2
         end = np.array([np.cos(a), 0.0, np.sin(a)]) * 0.3
         legs.append(tube([(0.0, 0.08, 0.0), (end[0], 0.065, end[2])], [(0.014, 0.02), (0.009, 0.014)], ring=8, exponent=3.0, smooth=1))
-        legs += _swivel_caster(float(end[0]), float(end[2]))
+        # Each caster rolls along its leg.
+        legs += _caster(float(end[0]), float(end[2]), CASTER_SIZE, float(np.arctan2(end[0], end[2])))
+        wheels.append(_wheel(float(end[0]), float(end[2]), CASTER_SIZE, float(np.arctan2(end[0], end[2]))))
     m.add("Base", merge(*legs, cylinder(0.04, (0.0, 0.05, 0.0), (0.0, 0.1, 0.0), 16)), "dark_steel")
+    m.add("Wheels", merge(*wheels), "rubber")
     column = merge(
         cylinder(0.024, (0.0, 0.1, 0.0), (0.0, 0.56, 0.0), 16),
         cylinder(0.017, (0.0, 0.56, 0.0), (0.0, 0.86, 0.0), 16),
@@ -154,15 +166,6 @@ def _rounded_loop(
             path.append((at[0] + cx + corner * np.cos(a), y, at[1] + cz + corner * np.sin(a)))
     path.append(path[0])
     return path, [radii] * len(path)
-
-
-def _swivel_caster(x: float, z: float) -> list[trimesh.Trimesh]:
-    """A small swivel caster at a leg's end: stem, fork and a wheel turned across the leg."""
-    return [
-        cylinder(0.007, (x, 0.065, z), (x, 0.045, z), 8),
-        _block((0.034, 0.012, 0.02), (x, 0.045, z)),
-        cylinder(0.02, (x - 0.011, 0.022, z + 0.006), (x + 0.011, 0.022, z + 0.006), 12),
-    ]
 
 
 def _small_tray(x: float, z: float, width: float, depth: float) -> trimesh.Trimesh:

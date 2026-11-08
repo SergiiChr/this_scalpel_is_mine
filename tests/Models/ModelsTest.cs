@@ -515,10 +515,16 @@ public class ModelsTest {
             .IsNull();
         var def = Db.Tools["needle"];
         var tip = model.GlobalTransform * new Vector3(0f, 0f, -def.Length);
-        var clamp = model.GlobalTransform * new Vector3(0f, 0f, -def.Length + 0.003f);
+        var clamp = model.GlobalTransform * new Vector3(0f, 0f, -def.Length + 0.009f);
         AssertFloat(needle!.GlobalPosition.DistanceTo(tip))
-            .OverrideFailureMessage("the curved needle's sharp end is the gameplay tip")
+            .OverrideFailureMessage("the curved needle's node sits on the gameplay tip")
             .IsLess(0.0001f);
+        AssertFloat(MeshDistance(needle, tip))
+            .OverrideFailureMessage("the curved needle's drawn sharp end is the gameplay tip")
+            .IsLess(0.0008f);
+        AssertFloat(PosedFaces(needle).Max(vertex => model.ToLocal(vertex).Z * -1f))
+            .OverrideFailureMessage("no part of the needle reaches past the gameplay tip")
+            .IsLess(def.Length + 0.0008f);
         AssertFloat(MeshDistance(needle, clamp))
             .OverrideFailureMessage("the curved needle crosses the holder at its clamp point")
             .IsLess(0.0011f);
