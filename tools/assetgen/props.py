@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 import trimesh
 
-from .geometry import Model, cylinder, ellipsoid, lathe, merge, moved, rotated, superellipsoid, torus, tube
+from .geometry import Model, cylinder, ellipsoid, lathe, merge, moved, rotated, rounded_slab, superellipsoid, torus, tube
 
 TABLE_HEIGHT = 0.85
 # The rail across the table's head end that the patient card hangs on: its hook (CardHook in src/World/Room.cs) goes
@@ -68,22 +68,44 @@ def _wheel(x: float, z: float) -> trimesh.Trimesh:
 
 
 def _operating_table() -> Model:
+    """A general surgery table: a floor plinth with brake pedals, one column flaring into the tabletop, sectioned foam
+    pads on hinged steel sections and flat accessory rails on standoffs along both sides, with a hand pendant hung on
+    the foot end. The pads' top stays at TABLE_HEIGHT: the game lands blood on pads and frame (BedLiquidSurface)."""
     m = Model("props", "operating_table")
-    m.add("Base", superellipsoid((0.7, 0.08, 0.45), 0.25, (0.0, 0.04, 0.0)), "dark_steel")
-    m.add("Column", superellipsoid((0.22, TABLE_HEIGHT - 0.2, 0.16), 0.3, (0.0, (TABLE_HEIGHT - 0.2) / 2 + 0.08, 0.0)), "steel")
-    # Runs from x -1.3 (feet) to 1.0 (head), long enough for the whole patient to lie on it.
-    m.add("Frame", superellipsoid((2.3, 0.05, 0.56), 0.15, (-0.15, TABLE_HEIGHT - 0.075, 0.0)), "steel")
-    pads = [superellipsoid((length, 0.06, 0.56), 0.35, (x, TABLE_HEIGHT - 0.03, 0.0)) for x, length in ((-0.85, 0.88), (0.0, 0.8), (0.62, 0.42), (0.92, 0.16))]
+    m.add("Base", superellipsoid((0.82, 0.05, 0.54), 0.15, (0.0, 0.025, 0.0), detail=6), "dark_steel")
+    # One lofted pillar: flared onto the plinth, a slim waist, and flared again into the block under the tabletop.
+    column = [(0.05, 0.2, 0.14), (0.1, 0.15, 0.11), (0.2, 0.13, 0.095), (0.58, 0.11, 0.08), (0.68, 0.12, 0.09), (0.73, 0.2, 0.14), (0.75, 0.23, 0.16)]
+    m.add("Column", tube([(0.0, y, 0.0) for y, _, _ in column], [(x, z) for _, x, z in column], ring=20, exponent=4.0, up=(1.0, 0.0, 0.0)), "steel")
+    # Runs from x -1.3 (feet) to 1.0 (head), long enough for the whole patient to lie on it, in four sections: legs,
+    # seat and back, chest and the head rest. Each foam pad sits on its own steel section, hinged to the next.
+    sections = ((-0.85, 0.88), (0.0, 0.8), (0.62, 0.42), (0.92, 0.16))
+    frame = [rounded_slab((2.29, 0.04, 0.54), 0.02, 0.006, (-0.145, TABLE_HEIGHT - 0.075, 0.0))]
+    hinges = [cylinder(0.011, (x, TABLE_HEIGHT - 0.085, -0.25), (x, TABLE_HEIGHT - 0.085, 0.25), 10) for x in (-0.405, 0.405, 0.835)]
+    m.add("Frame", merge(*frame, *hinges), "steel")
+    pads = [rounded_slab((length, 0.06, 0.56), 0.035, 0.018, (x, TABLE_HEIGHT - 0.03, 0.0)) for x, length in sections]
     m.add("Pads", merge(*pads), "mattress")
     low = TABLE_HEIGHT - 0.07
-    rails = [cylinder(0.008, (-1.25, low, s * 0.3), (0.95, low, s * 0.3), 8) for s in (-1, 1)]
-    # The side rails carry on round the head end and up into a bar above the pads.
+    # Flat side rails, the kind arm boards and screens clamp onto, held off the frame by standoffs.
+    rails = []
+    for s in (-1, 1):
+        rails.append(moved(trimesh.creation.box((2.2, 0.03, 0.01)), (-0.15, low, s * 0.3)))
+        rails += [moved(trimesh.creation.box((0.03, 0.02, 0.03)), (x, low, s * 0.285)) for x in (-1.15, -0.45, 0.25, 0.9)]
+    # The rails carry on round the head end and up into a bar above the pads.
     bends = [(0.95, low, -0.3), (HEAD_RAIL_X, low, -0.3), (HEAD_RAIL_X, HEAD_RAIL_TOP, -0.3)]
     bends += [(x, y, -z) for x, y, z in reversed(bends)]
     rails += [cylinder(0.008, a, b, 8) for a, b in pairwise(bends)]
     rails += [ellipsoid((0.008, 0.008, 0.008), bend, 1) for bend in bends[1:-1]]
     m.add("Rails", merge(*rails), "chrome")
-    m.add("Pedals", merge(*[superellipsoid((0.08, 0.02, 0.05), 0.4, (x, 0.09, 0.25)) for x in (-0.12, 0.12)]), "black_plastic")
+    pedals = [superellipsoid((0.09, 0.025, 0.06), 0.3, (x, 0.04, 0.3), detail=4) for x in (-0.13, 0.13)]
+    # The hand pendant hangs by its hook from the foot end rail, its coiled cord running down into the base.
+    pendant_x, pendant_z = -1.05, 0.315
+    hook_path = [(pendant_x, low - 0.06, pendant_z), (pendant_x, low + 0.02, pendant_z), (pendant_x, low + 0.02, pendant_z - 0.02)]
+    hook = tube(hook_path, [(0.003, 0.003)] * 3, ring=6)
+    body = superellipsoid((0.06, 0.15, 0.03), 0.3, (pendant_x, low - 0.135, pendant_z + 0.005), detail=4)
+    cord_path = [(pendant_x, low - 0.21, pendant_z), (pendant_x + 0.1, 0.3, pendant_z - 0.02), (-0.4, 0.12, 0.25), (-0.33, 0.08, 0.2)]
+    cord = tube(cord_path, [(0.004, 0.004)] * 4, ring=6)
+    m.add("Pendant", merge(body, hook, cord), "black_plastic")
+    m.add("Pedals", merge(*pedals), "black_plastic")
     return m
 
 

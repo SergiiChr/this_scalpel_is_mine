@@ -9,7 +9,7 @@ from typing import cast
 import numpy as np
 import trimesh
 from numpy.typing import NDArray
-from shapely.geometry import Polygon
+from shapely.geometry import Polygon, box
 
 Vec = NDArray[np.float64]
 
@@ -190,6 +190,31 @@ def ellipsoid(radii: Sequence[float], center: Sequence[float] = (0, 0, 0), subdi
 def cylinder(radius: float, a: Sequence[float], b: Sequence[float], sections: int = 20) -> trimesh.Trimesh:
     """Cylinder between two points."""
     return cast(trimesh.Trimesh, trimesh.creation.cylinder(radius=radius, segment=np.array([a, b], float), sections=sections))
+
+
+def rounded_slab(size: Sequence[float], radius: float, bevel: float, center: Sequence[float] = (0, 0, 0)) -> trimesh.Trimesh:
+    """A box with rounded upright corners (`radius`) and its top and bottom edges rounded off by `bevel`, like a foam
+    pad. size is the full extent (x, y, z)."""
+    length, height, width = size
+    core = box(-length / 2 + radius, -width / 2 + radius, length / 2 - radius, width / 2 - radius)
+    # Rings from the bottom up as (height, inset): a quarter round at each edge, flat sides between.
+    quarter = [(bevel * (1 - np.cos(a)), bevel * (1 - np.sin(a))) for a in np.linspace(0.0, np.pi / 2, 4)]
+    rings = quarter + [(height - y, inset) for y, inset in reversed(quarter)]
+    outlines = [np.asarray(core.buffer(radius - inset, quad_segs=4).exterior.coords)[:-1] for _, inset in rings]
+    count = len(outlines[0])
+    verts = [(x, y, z) for (y, _), outline in zip(rings, outlines, strict=True) for x, z in outline]
+    faces = []
+    for i in range(len(rings) - 1):
+        for j in range(count):
+            a, b = i * count + j, i * count + (j + 1) % count
+            faces += [[a, b + count, b], [a, a + count, b + count]]
+    bottom, top = len(verts), len(verts) + 1
+    verts += [(0.0, 0.0, 0.0), (0.0, height, 0.0)]
+    last = (len(rings) - 1) * count
+    for j in range(count):
+        faces += [[bottom, j, (j + 1) % count], [top, last + (j + 1) % count, last + j]]
+    mesh = trimesh.Trimesh(np.array(verts) + (np.asarray(center, float) - (0.0, height / 2, 0.0)), np.array(faces), process=True)
+    return finish(mesh)
 
 
 def extrude(outline: Sequence[tuple[float, float]], depth: float, faceted: bool = True) -> trimesh.Trimesh:

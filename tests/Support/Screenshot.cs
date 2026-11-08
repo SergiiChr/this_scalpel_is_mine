@@ -103,10 +103,14 @@ public partial class Screenshot : Node {
         var meshes = root.FindChildren("*", "MeshInstance3D", true, false).Cast<MeshInstance3D>();
         var box = meshes.Select(mesh => mesh.GlobalTransform * mesh.GetAabb()).Aggregate((a, b) => a.Merge(b));
         var center = box.GetCenter();
-        var size = box.Size.Length();
+        // A big prop is framed from closer with a wider lens, so the camera stays inside the room's walls.
+        var big = box.Size.Length() > 1.5f;
+        var size = box.Size.Length() * (big ? 0.42f : 1f);
         var camera = NewCamera();
         camera.Near = 0.02f;
-        camera.Fov = 40f;
+        camera.Fov = big ? 75f : 40f;
+        // The prop on its own: the patient would cover the table.
+        surgery.Patient.Visible = false;
         // The prop's front is its +Z, the way Room turns it to face into the room.
         (string Name, Vector3 From, float Distance)[] views = [
             ("front", new Vector3(0f, 0.15f, 1f), size * 1.6f),
