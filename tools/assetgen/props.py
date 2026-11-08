@@ -69,15 +69,16 @@ def _wheel(x: float, z: float) -> trimesh.Trimesh:
 
 def _operating_table() -> Model:
     """A general surgery table: a floor plinth with brake pedals, one column flaring into the tabletop, sectioned foam
-    pads on hinged steel sections and flat accessory rails on standoffs along both sides, with a hand pendant hung on
-    the foot end. The pads' top stays at TABLE_HEIGHT: the game lands blood on pads and frame (BedLiquidSurface)."""
+    pads on a steel frame with hinge pins, and flat accessory rails on standoffs along both sides.
+    A hand pendant hangs on the foot end.
+    The pads' top stays at TABLE_HEIGHT: the game lands blood on pads and frame (BedLiquidSurface)."""
     m = Model("props", "operating_table")
     m.add("Base", superellipsoid((0.82, 0.05, 0.54), 0.15, (0.0, 0.025, 0.0), detail=6), "dark_steel")
     # One lofted pillar: flared onto the plinth, a slim waist, and flared again into the block under the tabletop.
     column = [(0.05, 0.2, 0.14), (0.1, 0.15, 0.11), (0.2, 0.13, 0.095), (0.58, 0.11, 0.08), (0.68, 0.12, 0.09), (0.73, 0.2, 0.14), (0.75, 0.23, 0.16)]
     m.add("Column", tube([(0.0, y, 0.0) for y, _, _ in column], [(x, z) for _, x, z in column], ring=20, exponent=4.0, up=(1.0, 0.0, 0.0)), "steel")
     # Runs from x -1.3 (feet) to 1.0 (head), long enough for the whole patient to lie on it, in four sections: legs,
-    # seat and back, chest and the head rest. Each foam pad sits on its own steel section, hinged to the next.
+    # seat and back, chest and the head rest. The foam pads sit on one steel frame, with hinge pins under the joints.
     sections = ((-0.85, 0.88), (0.0, 0.8), (0.62, 0.42), (0.92, 0.16))
     frame = [rounded_slab((2.29, 0.04, 0.54), 0.02, 0.006, (-0.145, TABLE_HEIGHT - 0.075, 0.0))]
     hinges = [cylinder(0.011, (x, TABLE_HEIGHT - 0.085, -0.25), (x, TABLE_HEIGHT - 0.085, 0.25), 10) for x in (-0.405, 0.405, 0.835)]
@@ -186,7 +187,7 @@ def _iv_stand() -> Model:
 
 def _shelf() -> Model:
     """A white wall shelf on steel L brackets with a row of reference books and ring binders, spines out, and the game's
-    red manual binder. The wall is at -Z; the ambulance keeps only the manual and its label (Room.Ambulance.cs)."""
+    thick red manual. The wall is at -Z; the ambulance keeps only the manual and its label (Room.Ambulance.cs)."""
     m = Model("props", "manual")
     top = 1.215
     back = -0.15
@@ -223,14 +224,14 @@ def _shelf() -> Model:
         books.append(cover)
         pages.append(block)
         x += width + 0.002
-    labels = []
+    labels, holes = [], []
     for _ in range(3):
         width = 0.055
         cover, block = volume(x + width / 2, width, 0.29, 0.22)
         binders.append(cover)
         pages.append(block)
         labels.append(moved(trimesh.creation.box((0.035, 0.09, 0.002)), (x + width / 2, top + 0.2, back + 0.231)))
-        labels.append(cylinder(0.009, (x + width / 2, top + 0.07, back + 0.229), (x + width / 2, top + 0.07, back + 0.232), 8))
+        holes.append(cylinder(0.009, (x + width / 2, top + 0.07, back + 0.229), (x + width / 2, top + 0.07, back + 0.232), 8))
         x += width + 0.002
     manual_x = 0.2
     # A last book leans on the manual.
@@ -239,8 +240,8 @@ def _shelf() -> Model:
     pages.append(block)
     m.add("Books", merge(*books), "leather")
     m.add("Binders", merge(*binders), "blue_plastic")
-    m.add("Pages", merge(*pages, *labels[0::2]), "paper")
-    m.add("Holes", merge(*labels[1::2]), "black_plastic")
+    m.add("Pages", merge(*pages, *labels), "paper")
+    m.add("Holes", merge(*holes), "black_plastic")
     # The manual is a thick red hardcover with a rounded spine and gold bands, so it stands out from the row.
     # Its pages are a part of their own: the ambulance hides the shelf's other pages but keeps the manual.
     width, height, depth = 0.08, 0.28, 0.21
