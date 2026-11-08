@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 import trimesh
 
-from .geometry import Model, cylinder, ellipsoid, lathe, merge, moved, superellipsoid, torus, tube
+from .geometry import Model, cylinder, ellipsoid, lathe, merge, moved, rotated, superellipsoid, torus, tube
 
 TABLE_HEIGHT = 0.85
 # The rail across the table's head end that the patient card hangs on: its hook (CardHook in src/World/Room.cs) goes
@@ -138,23 +138,80 @@ def _iv_stand() -> Model:
 
 
 def _shelf() -> Model:
+    """A white wall shelf on steel L brackets with a row of reference books and ring binders, spines out, and the game's
+    red manual binder. The wall is at -Z; the ambulance keeps only the manual and its label (Room.Ambulance.cs)."""
     m = Model("props", "manual")
-    m.add("Board", superellipsoid((0.8, 0.03, 0.3), 0.15, (0.0, 1.2, 0.0)), "wood")
-    brackets = [
-        merge(superellipsoid((0.02, 0.25, 0.02), 0.2, (x, 1.07, -0.13)), superellipsoid((0.02, 0.02, 0.26), 0.2, (x, 1.18, 0.0))) for x in (-0.33, 0.33)
-    ]
+    top = 1.215
+    back = -0.15
+    m.add("Board", superellipsoid((0.8, 0.03, 0.3), 0.12, (0.0, top - 0.015, 0.0), detail=6), "wood")
+    brackets = []
+    for x in (-0.3, 0.3):
+        brackets += [
+            moved(trimesh.creation.box((0.025, 0.2, 0.004)), (x, top - 0.13, back + 0.002)),
+            moved(trimesh.creation.box((0.025, 0.004, 0.25)), (x, top - 0.032, back + 0.125)),
+            tube([(x, top - 0.21, back + 0.004), (x, top - 0.034, back + 0.2)], [(0.004, 0.006)] * 2, ring=6, exponent=4.0),
+        ]
     m.add("Brackets", merge(*brackets), "dark_steel")
-    books = []
+
+    def volume(x: float, width: float, height: float, depth: float, lean: float = 0.0) -> tuple[trimesh.Trimesh, trimesh.Trimesh]:
+        """A hardcover's boards and spine, and its page block 3 mm inside them, standing at x."""
+        z = back + 0.01 + depth / 2
+        cover = merge(
+            moved(trimesh.creation.box((0.003, height, depth)), (x - width / 2 + 0.0015, top + height / 2, z)),
+            moved(trimesh.creation.box((0.003, height, depth)), (x + width / 2 - 0.0015, top + height / 2, z)),
+            moved(trimesh.creation.box((width, height, 0.004)), (x, top + height / 2, z + depth / 2 - 0.002)),
+        )
+        pages = moved(trimesh.creation.box((width - 0.006, height - 0.006, depth - 0.006)), (x, top + height / 2 - 0.003, z - 0.003))
+        if lean:
+            cover, pages = (rotated(part, lean, (0.0, 0.0, 1.0), (x + width / 2, top, z)) for part in (cover, pages))
+        return cover, pages
+
+    books, binders, pages = [], [], []
     rng = np.random.default_rng(4)
-    x = -0.36
-    for _ in range(9):
-        w = rng.uniform(0.025, 0.045)
-        h = rng.uniform(0.2, 0.27)
-        books.append(superellipsoid((w, h, 0.18), 0.2, (x + w / 2, 1.215 + h / 2, 0.0)))
-        x += w + 0.003
+    x = -0.37
+    # Reference books of mixed size, then three blue binders with paper labels and finger holes.
+    for _ in range(5):
+        width, height = rng.uniform(0.028, 0.045), rng.uniform(0.2, 0.25)
+        cover, block = volume(x + width / 2, width, height, rng.uniform(0.15, 0.19))
+        books.append(cover)
+        pages.append(block)
+        x += width + 0.002
+    labels = []
+    for _ in range(3):
+        width = 0.055
+        cover, block = volume(x + width / 2, width, 0.29, 0.22)
+        binders.append(cover)
+        pages.append(block)
+        labels.append(moved(trimesh.creation.box((0.035, 0.09, 0.002)), (x + width / 2, top + 0.2, back + 0.231)))
+        labels.append(cylinder(0.009, (x + width / 2, top + 0.07, back + 0.229), (x + width / 2, top + 0.07, back + 0.232), 8))
+        x += width + 0.002
+    manual_x = 0.2
+    # A last book leans on the manual.
+    cover, block = volume(manual_x - 0.04 - 0.042, 0.032, 0.22, 0.17, -0.12)
+    books.append(cover)
+    pages.append(block)
     m.add("Books", merge(*books), "leather")
-    m.add("Manual", superellipsoid((0.05, 0.28, 0.2), 0.2, (0.2, 1.355, 0.0)), "red_plastic")
-    m.add("Spine", superellipsoid((0.052, 0.04, 0.2), 0.2, (0.2, 1.42, 0.0)), "gold")
+    m.add("Binders", merge(*binders), "blue_plastic")
+    m.add("Pages", merge(*pages, *labels[0::2]), "paper")
+    m.add("Holes", merge(*labels[1::2]), "black_plastic")
+    # The manual is a thick red hardcover with a rounded spine and gold bands, so it stands out from the row.
+    # Its pages are a part of their own: the ambulance hides the shelf's other pages but keeps the manual.
+    width, height, depth = 0.08, 0.28, 0.21
+    z = back + 0.01 + depth / 2
+    board = trimesh.creation.box((0.004, height, depth - 0.012))
+    boards = [moved(board, (manual_x + side * (width / 2 - 0.002), top + height / 2, z - 0.006)) for side in (-1, 1)]
+    spine_z = back + 0.01 + depth - 0.012
+
+    def rounded(y0: float, y1: float, grow: float) -> trimesh.Trimesh:
+        """A length of the rounded spine between two heights, grown by `grow` all round."""
+        return tube([(manual_x, top + y0, spine_z), (manual_x, top + y1, spine_z)], [(0.012 + grow, width / 2 + grow)] * 2, ring=16, up=(0.0, 0.0, 1.0))
+
+    spine = rounded(0.0, height, 0.0)
+    m.add("Manual", merge(*boards, spine), "book_cloth")
+    m.add("ManualPages", moved(trimesh.creation.box((width - 0.008, height - 0.008, depth - 0.016)), (manual_x, top + height / 2, z - 0.008)), "paper")
+    bands = [rounded(y - 0.004, y + 0.004, 0.0008) for y in (0.025, 0.04, height - 0.04, height - 0.025)]
+    bands.append(moved(trimesh.creation.box((width * 0.5, 0.05, 0.002)), (manual_x, top + 0.19, spine_z + 0.0125)))
+    m.add("Spine", merge(*bands), "gold")
     return m
 
 

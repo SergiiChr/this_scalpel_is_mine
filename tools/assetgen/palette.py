@@ -54,6 +54,7 @@ PALETTE: dict[str, Swatch] = {
     "brass": Swatch((0.72, 0.58, 0.25), 0.3, 1.0),
     "gold": Swatch((0.85, 0.66, 0.2), 0.25, 1.0),
     "leather": Swatch((0.25, 0.15, 0.1), 0.8),
+    "book_cloth": Swatch((0.7, 0.15, 0.12), 0.9),
     "fabric_white": Swatch((0.93, 0.93, 0.9), 0.95),
     "fabric_dark": Swatch((0.15, 0.15, 0.16), 0.95),
     "paper": Swatch((0.88, 0.85, 0.76), 0.95),

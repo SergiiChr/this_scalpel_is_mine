@@ -15,6 +15,7 @@ namespace Scalpel.Tests.Support;
 /// the stand and the dressing close up (42_*), then a sedated and a knocked out surgeon (43_* to 46_*,
 /// --only=sedation). --only=&lt;case&gt; renders one.</item>
 /// <item>--menus: the main menu's pages and the lobby.</item>
+/// <item>--prop=&lt;key&gt;: one room prop where it stands, from the front, both corners, above and close up.</item>
 /// <item>--tool=&lt;id&gt;: one tool's model over the patient from both sides, the top, an oblique and its working end close
 /// up, for reviewing a model change.</item>
 /// </list>
@@ -51,6 +52,8 @@ public partial class Screenshot : Node {
             await SurgeryDriver.PlayerPutsCardBack(surgery);
             if (Arg("tool", "") is { Length: > 0 } tool) {
                 await ToolViews(surgery, tool);
+            } else if (Arg("prop", "") is { Length: > 0 } prop) {
+                await PropViews(surgery, prop);
             } else if (Has("--lighting")) {
                 await LightingViews(surgery);
             } else if (Has("--anatomy")) {
@@ -90,6 +93,32 @@ public partial class Screenshot : Node {
             camera.GlobalPosition = at + (holder.GlobalBasis * from.Normalized() * distance);
             camera.LookAt(at, Mathf.Abs(from.Normalized().Y) > 0.9f ? Vector3.Forward : Vector3.Up);
             await Shot($"{id}_{name}");
+        }
+    }
+
+    /// <summary>One room prop where it stands: from the front, both front corners, above and close up.</summary>
+    private async Task PropViews(Surgery surgery, string key) {
+        var root = surgery.Room.FindChildren("*", "Node3D", true, false).Cast<Node3D>()
+            .First(node => node.SceneFilePath.EndsWith($"/{key}.glb", StringComparison.Ordinal));
+        var meshes = root.FindChildren("*", "MeshInstance3D", true, false).Cast<MeshInstance3D>();
+        var box = meshes.Select(mesh => mesh.GlobalTransform * mesh.GetAabb()).Aggregate((a, b) => a.Merge(b));
+        var center = box.GetCenter();
+        var size = box.Size.Length();
+        var camera = NewCamera();
+        camera.Near = 0.02f;
+        camera.Fov = 40f;
+        // The prop's front is its +Z, the way Room turns it to face into the room.
+        (string Name, Vector3 From, float Distance)[] views = [
+            ("front", new Vector3(0f, 0.15f, 1f), size * 1.6f),
+            ("left", new Vector3(-0.7f, 0.3f, 0.7f), size * 1.6f),
+            ("right", new Vector3(0.7f, 0.3f, 0.7f), size * 1.6f),
+            ("top", new Vector3(0f, 1f, 0.35f), size * 1.6f),
+            ("close", new Vector3(0.35f, 0.25f, 1f), size * 0.8f),
+        ];
+        foreach (var (name, from, distance) in views) {
+            camera.GlobalPosition = center + (root.GlobalBasis * from.Normalized() * distance);
+            camera.LookAt(center, Vector3.Up);
+            await Shot($"{key}_{name}");
         }
     }
 
