@@ -662,17 +662,34 @@ def _defib_cart() -> Model:
 
 
 def _sink() -> Model:
-    """Scrub sink: a steel basin on a cabinet with a gooseneck tap. Basin rim at 0.9 m, front toward +Z."""
+    """Hand wash sink: a round steel bowl with a drip-stop rim standing on a cabinet, a swivel gooseneck with an elbow
+    lever behind it, and a knee panel on the cabinet door. Rim at 0.92 m, front toward +Z."""
     m = Model("props", "sink")
-    m.add("Cabinet", superellipsoid((0.7, 0.82, 0.5), 0.05, (0.0, 0.41, 0.0)), "steel")
-    # Out along the bottom and up the wall, then back down the inside: a hollow bowl.
-    basin = lathe([(0.0, 0.0), (0.2, 0.0), (0.26, 0.12), (0.27, 0.13), (0.25, 0.13), (0.19, 0.02), (0.0, 0.02)], 28)
-    m.add("Basin", moved(basin, (0.0, 0.78, 0.02)), "dark_steel")
+    # Its top stays under the bowl's floor, or it shows through the bowl as a false floor.
+    # A toe recess under the front lets the surgeon stand close.
+    cabinet = merge(_block((0.7, 0.68, 0.5), (0.0, 0.44, 0.0)), _block((0.66, 0.1, 0.44), (0.0, 0.05, -0.03)))
+    m.add("Cabinet", cabinet, "steel")
+    m.add("Door", merge(_block((0.6, 0.58, 0.012), (0.0, 0.44, 0.252)), _block((0.16, 0.08, 0.012), (0.0, 0.6, 0.262))), "dark_steel")
+    # Down the inside to the drain and back up the outside, with the rim rolled over between: a bowl with a wall.
+    inside = [(0.0, 0.012), (0.1, 0.012), (0.16, 0.025), (0.2, 0.06), (0.218, 0.12), (0.22, 0.135)]
+    outside = [(0.24, 0.128), (0.228, 0.115), (0.21, 0.06), (0.17, 0.016), (0.1, 0.0), (0.0, 0.0)]
+    rim = [(0.226, 0.143), (0.236, 0.141), (0.241, 0.136)]
+    m.add("Basin", moved(lathe(inside + rim + outside, 28), (0.0, 0.78, 0.03)), "dark_steel")
+    m.add("Drain", cylinder(0.032, (0.0, 0.791, 0.03), (0.0, 0.795, 0.03), 12), "chrome")
+    m.add("Plug", cylinder(0.02, (0.0, 0.795, 0.03), (0.0, 0.797, 0.03), 12), "black_plastic")
     # Up and over in one plane: its rings are laid out from across that plane, or they twist into a pinch where it
     # runs straight up.
-    tap = [(0.0, 0.91, -0.2), (0.0, 1.12, -0.2), (0.0, 1.16, -0.1), (0.0, 1.06, -0.02)]
-    m.add("Tap", tube(tap, [(0.012, 0.012)] * len(tap), ring=10, up=(1.0, 0.0, 0.0)), "chrome")
-    m.add("Lever", cylinder(0.008, (-0.06, 1.0, -0.2), (0.06, 1.0, -0.2), 8), "chrome")
+    tap = [(0.0, 1.0, -0.215), (0.0, 1.18, -0.215), (0.0, 1.23, -0.13), (0.0, 1.17, -0.03), (0.0, 1.11, -0.025)]
+    lever = [(0.02, 0.96, -0.215), (0.1, 0.955, -0.205), (0.17, 0.94, -0.17)]
+    body = [
+        cylinder(0.032, (0.0, 0.78, -0.215), (0.0, 0.788, -0.215), 16),
+        cylinder(0.02, (0.0, 0.788, -0.215), (0.0, 1.0, -0.215), 12),
+        cylinder(0.024, (0.0, 0.94, -0.215), (0.0, 0.98, -0.215), 12),
+        cylinder(0.014, (0.0, 1.11, -0.025), (0.0, 1.09, -0.025), 10),
+    ]
+    m.add("Tap", merge(*body, tube(tap, [(0.011, 0.011)] * len(tap), ring=10, up=(1.0, 0.0, 0.0), smooth=3)), "chrome")
+    # The elbow lever: a long flat blade out to the side, turned with a forearm.
+    m.add("Lever", tube(lever, [(0.004, 0.012), (0.004, 0.01), (0.004, 0.013)], ring=8, exponent=4.0, smooth=3), "chrome")
     return m
 
 
