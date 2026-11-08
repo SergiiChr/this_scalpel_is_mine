@@ -104,7 +104,7 @@ public partial class Screenshot : Node {
         var box = meshes.Select(mesh => mesh.GlobalTransform * mesh.GetAabb()).Aggregate((a, b) => a.Merge(b));
         var center = box.GetCenter();
         // A big prop is framed from closer with a wider lens, so the camera stays inside the room's walls.
-        var big = box.Size.Length() > 1.5f;
+        var big = box.Size.Length() > 1f;
         var size = box.Size.Length() * (big ? 0.42f : 1f);
         var camera = NewCamera();
         camera.Near = 0.02f;
@@ -113,11 +113,11 @@ public partial class Screenshot : Node {
         surgery.Patient.Visible = false;
         // The prop's front is its +Z, the way Room turns it to face into the room.
         (string Name, Vector3 From, float Distance)[] views = [
-            ("front", new Vector3(0f, 0.15f, 1f), size * 1.6f),
-            ("left", new Vector3(-0.7f, 0.3f, 0.7f), size * 1.6f),
-            ("right", new Vector3(0.7f, 0.3f, 0.7f), size * 1.6f),
+            ("front", new Vector3(0f, 0.5f, 1f), size * 1.6f),
+            ("left", new Vector3(-0.7f, 0.7f, 0.7f), size * 1.6f),
+            ("right", new Vector3(0.7f, 0.7f, 0.7f), size * 1.6f),
             ("top", new Vector3(0f, 1f, 0.35f), size * 1.6f),
-            ("close", new Vector3(0.35f, 0.25f, 1f), size * 0.8f),
+            ("close", new Vector3(0.35f, 0.6f, 1f), size * 0.8f),
         ];
         foreach (var (name, from, distance) in views) {
             camera.GlobalPosition = center + (root.GlobalBasis * from.Normalized() * distance);

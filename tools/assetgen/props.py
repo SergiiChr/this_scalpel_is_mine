@@ -110,41 +110,66 @@ def _operating_table() -> Model:
 
 
 def _instrument_tray() -> Model:
+    """A steel instrument table on one telescoping column: a sheet tray with a rolled rim over two rails, a height collar
+    with its knob, and a five-leg base on casters. Its top stays at TraySurface (src/World/Room.cs), where tools lie."""
     m = Model("props", "instrument_tray")
-    m.add("Base", _wheels(0.025, 0.3), "dark_steel")
-    m.add("Pole", cylinder(0.02, (0.0, 0.05, 0.0), (0.0, 0.88, 0.0)), "steel")
-    tray = superellipsoid((0.7, 0.02, 0.8), 0.12, (0.0, 0.895, 0.0))
-    rim = merge(
-        *[
-            superellipsoid(size, 0.2, c)
-            for size, c in (
-                ((0.72, 0.03, 0.015), (0.0, 0.91, 0.4)),
-                ((0.72, 0.03, 0.015), (0.0, 0.91, -0.4)),
-                ((0.015, 0.03, 0.8), (0.35, 0.91, 0.0)),
-                ((0.015, 0.03, 0.8), (-0.35, 0.91, 0.0)),
-            )
-        ]
+    legs = []
+    for i in range(5):
+        a = i * 2 * np.pi / 5 + np.pi / 2
+        end = np.array([np.cos(a), 0.0, np.sin(a)]) * 0.3
+        legs.append(tube([(0.0, 0.08, 0.0), (end[0], 0.065, end[2])], [(0.014, 0.02), (0.009, 0.014)], ring=8, exponent=3.0, smooth=1))
+        legs += _swivel_caster(float(end[0]), float(end[2]))
+    m.add("Base", merge(*legs, cylinder(0.04, (0.0, 0.05, 0.0), (0.0, 0.1, 0.0), 16)), "dark_steel")
+    column = merge(
+        cylinder(0.024, (0.0, 0.1, 0.0), (0.0, 0.56, 0.0), 16),
+        cylinder(0.017, (0.0, 0.56, 0.0), (0.0, 0.86, 0.0), 16),
     )
-    m.add("Tray", merge(tray, rim), "steel")
-    m.add("Drape", superellipsoid((0.66, 0.004, 0.76), 0.15, (0.0, 0.907, 0.0)), "gown")
+    m.add("Pole", column, "steel")
+    collar = merge(
+        cylinder(0.03, (0.0, 0.54, 0.0), (0.0, 0.58, 0.0), 16),
+        cylinder(0.005, (0.0, 0.56, 0.0), (0.0, 0.56, 0.06), 8),
+        superellipsoid((0.022, 0.022, 0.012), 0.6, (0.0, 0.56, 0.065), detail=4),
+    )
+    m.add("Collar", collar, "black_plastic")
+    rails = [_block((0.03, 0.02, 0.7), (x, 0.883, 0.0)) for x in (-0.2, 0.2)]
+    bracket = merge(_block((0.44, 0.02, 0.05), (0.0, 0.871, 0.0)), cylinder(0.026, (0.0, 0.85, 0.0), (0.0, 0.862, 0.0), 16))
+    sheet = rounded_slab((0.7, 0.012, 0.8), 0.05, 0.003, (0.0, 0.899, 0.0))
+    rim = tube(*_rounded_loop(0.69, 0.79, 0.045, 0.909, (0.008, 0.008)), ring=10, smooth=1)
+    m.add("Tray", merge(sheet, rim, bracket, *rails), "steel")
+    m.add("Drape", rounded_slab((0.66, 0.006, 0.76), 0.03, 0.002, (0.0, 0.906, 0.0)), "gown")
     m.add("SmallTrays", merge(*[_small_tray(*area) for area in SMALL_TRAYS]), "steel")
     return m
 
 
+def _rounded_loop(
+    width: float, depth: float, corner: float, y: float, radii: tuple[float, float], at: tuple[float, float] = (0.0, 0.0)
+) -> tuple[list[tuple[float, float, float]], list[tuple[float, float]]]:
+    """A closed path round a rounded rectangle in the XZ plane, with `radii` at every point, for `tube`. It starts and
+    ends mid side, where the tube's seam is least seen."""
+    hx, hz = width / 2 - corner, depth / 2 - corner
+    path = [(at[0], y, at[1] + depth / 2)]
+    for cx, cz, a0 in ((hx, hz, 90), (hx, -hz, 0), (-hx, -hz, -90), (-hx, hz, -180)):
+        for a in np.radians(np.linspace(a0, a0 - 90, 4)):
+            path.append((at[0] + cx + corner * np.cos(a), y, at[1] + cz + corner * np.sin(a)))
+    path.append(path[0])
+    return path, [radii] * len(path)
+
+
+def _swivel_caster(x: float, z: float) -> list[trimesh.Trimesh]:
+    """A small swivel caster at a leg's end: stem, fork and a wheel turned across the leg."""
+    return [
+        cylinder(0.007, (x, 0.065, z), (x, 0.045, z), 8),
+        _block((0.034, 0.012, 0.02), (x, 0.045, z)),
+        cylinder(0.02, (x - 0.011, 0.022, z + 0.006), (x + 0.011, 0.022, z + 0.006), 12),
+    ]
+
+
 def _small_tray(x: float, z: float, width: float, depth: float) -> trimesh.Trimesh:
     """A shallow steel tray on the drape, its corner at (x, z). Floor top 4 mm and rim 16 mm above the surface."""
-    cx, cz = x + width / 2, z + depth / 2
-    floor = superellipsoid((width, 0.006, depth), 0.2, (cx, 0.916, cz))
-    walls = [
-        superellipsoid(size, 0.2, c)
-        for size, c in (
-            ((width, 0.018, 0.006), (cx, 0.922, z + 0.003)),
-            ((width, 0.018, 0.006), (cx, 0.922, z + depth - 0.003)),
-            ((0.006, 0.018, depth), (x + 0.003, 0.922, cz)),
-            ((0.006, 0.018, depth), (x + width - 0.003, 0.922, cz)),
-        )
-    ]
-    return merge(floor, *walls)
+    at = (x + width / 2, z + depth / 2)
+    floor = rounded_slab((width, 0.004, depth), 0.008, 0.001, (at[0], 0.917, at[1]))
+    wall = tube(*_rounded_loop(width - 0.006, depth - 0.006, 0.006, 0.923, (0.008, 0.003), at), ring=8, exponent=4.0, smooth=1)
+    return merge(floor, wall)
 
 
 def _iv_stand() -> Model:
