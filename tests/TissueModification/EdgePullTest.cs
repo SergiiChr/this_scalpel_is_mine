@@ -143,10 +143,13 @@ public class EdgePullTest {
         await session.CaptureOblique("grabbed", $"the {toolId} holding the middle of the wound's edge, seen across the "
             + "opening: skin, fat and muscle walls lie flat and even along the cut", at, facing, 0.12f, 30f);
 
-        // Remove the patient's motion while retaining world meters: ToLocal also divides by the model's scale,
-        // which would make an unresisted 5 mm mouse stroke look shorter on a scaled patient.
+        // Measure in the site's axes while retaining world meters: ToLocal also divides by the model's scale, which
+        // would make an unresisted 5 mm mouse stroke look shorter on a scaled patient.
+        // The tip is measured from where the site was at the grab: breathing lifts a torso site by a few millimeters
+        // under the still hand each breath, which would otherwise read as the edge stopping and rebounding.
         var measureFrame = body.Site.GlobalBasis.Orthonormalized().Inverse();
-        Vector3 Contact() => measureFrame * (tool.TipPosition() - body.Site.GlobalPosition);
+        var origin = body.Site.GlobalPosition;
+        Vector3 Contact() => measureFrame * (tool.TipPosition() - origin);
         Vector3 SkinContact() => measureFrame * (body.Site.GlobalBasis * body.Tissue.Pos[k]);
         var pullDirection = measureFrame * away;
         var start = Contact();
