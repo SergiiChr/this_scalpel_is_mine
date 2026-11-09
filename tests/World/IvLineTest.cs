@@ -111,12 +111,18 @@ public class IvLineTest {
 
             var clipping = "";
             var stretched = 1f;
-            await driver.PlayerHoldsWalkKey(InputActions.MoveBack, WalkOff, () => {
+            void Watch() {
                 if (clipping.Length == 0 && patient.IvSet) {
                     clipping = Clipping(line, surgery);
                     stretched = Mathf.Max(stretched, line.Stretch);
                 }
-            });
+            }
+            await driver.PlayerHoldsWalkKey(InputActions.MoveBack, WalkOff, Watch);
+            // The wall behind can stop the walk back just short of a rip, so then the walk carries on along it, away
+            // from the stand.
+            if (patient.IvSet) {
+                await driver.PlayerHoldsWalkKey(InputActions.MoveLeft, WalkOff, Watch);
+            }
             AssertString(clipping).OverrideFailureMessage($"caught on the legs, the tubing never goes through them: {clipping}")
                 .IsEmpty();
             AssertBool(!patient.IvSet && patient.Flags.ContainsKey("iv_pulled"))
