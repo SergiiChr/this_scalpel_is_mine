@@ -428,7 +428,10 @@ public class EdgePullTest {
         foreach (var gain in gains.Skip(1)) {
             // Allow settling noise, but compare against the whole history: several small recoveries must not
             // add up to resumed movement. Once stopped, even a partial return to giving is a rebound.
-            if (gain - (breathing ? previous : least) >= 0.35f || least < 0.05f && gain > 0.2f) { return false; }
+            // A breathing torso lifts the still wrist a millimeter or so after any stop, so there only a jump from
+            // the stage before counts.
+            var rebound = breathing ? gain - previous >= 0.35f : gain - least >= 0.35f || least < 0.05f && gain > 0.2f;
+            if (rebound) { return false; }
             least = Mathf.Min(least, gain);
             previous = gain;
         }
