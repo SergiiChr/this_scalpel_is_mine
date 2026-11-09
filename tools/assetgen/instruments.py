@@ -59,56 +59,215 @@ def flat(outline: list[tuple[float, float]], thickness: float, plane: str = "yz"
     return mesh
 
 
-def _scalpel(m: Model, length: float, dull: bool) -> None:
-    """A scalpel, or with dull a switchblade. The blade stands in the YZ plane, edge down, and the flat handle
-    lies in the same plane (thin across X), like a real one: the game cuts along where that plane meets the skin.
-    A scalpel is a #3 handle with a #10 blade, about 4 cm of it showing; the switchblade's blade is most of its length."""
-    start = -0.035 if dull else -length + 0.04
-    back = length * 0.62 - 0.035 if dull else 0.075
+def _side_plate(outline: list[tuple[float, float]], thickness: float) -> trimesh.Trimesh:
+    """A plate in the YZ plane, thin across X. Outline points are (z, y)."""
+    # A quarter turn the other way would point the outline back through the hand.
+    return rotated(extrude(outline, thickness), -np.pi / 2, Y)
+
+
+def _bezier(a: tuple[float, float], control: tuple[float, float], b: tuple[float, float], count: int) -> list[tuple[float, float]]:
+    """Points along a quadratic curve from a to b, a included, b left out so curves chain."""
+    return [
+        ((1 - t) ** 2 * a[0] + 2 * (1 - t) * t * control[0] + t * t * b[0], (1 - t) ** 2 * a[1] + 2 * (1 - t) * t * control[1] + t * t * b[1])
+        for t in np.linspace(0.0, 1.0, count, endpoint=False)
+    ]
+
+
+def _scalpel(m: Model, length: float) -> None:
+    """A #3 handle with a #10 blade. Blade and flat handle stand in the YZ plane (thin across X), edge down: the game
+    cuts along where that plane meets the skin, and the blade starts at the handle's shoulder.
+    The handle is a steel bar with a narrow neck, ribbed thumb rest and a ruler on its back half.
+    The blade has a gently humped spine, a long belly up to the point and a bright ground edge; the handle's tongue
+    shows through its slot."""
+    shoulder = -length + 0.04
+    back = 0.075
+    # Half width of the bar along it: narrow neck behind the blade, full grip, slightly narrower rounded end.
+    widths = [
+        (shoulder, 0.0024),
+        (shoulder + 0.006, 0.0026),
+        (shoulder + 0.016, 0.0046),
+        (-0.01, 0.0049),
+        (0.05, 0.0046),
+        (back - 0.004, 0.0043),
+        (back, 0.0016),
+    ]
+    # Half the bar's thickness, 4.2 mm in all: thicker than a real 2.5 mm handle, because how the scalpel lies on the
+    # tray sets its pickup pose, which cutting is tuned on.
+    half = 0.00212
+    bar = tube([(0.0, 0.0, z) for z, _ in widths], [(w, half) for _, w in widths], ring=16, exponent=5.0, smooth=4)
+    # Thumb rest: crosswise ribs standing on both faces.
+    ribs = [
+        superellipsoid((0.0007, 0.0074, 0.0011), 0.35, (side * half, 0.0, z), detail=5)
+        for z in np.linspace(shoulder + 0.02, shoulder + 0.045, 9)
+        for side in (1.0, -1.0)
+    ]
+    m.add("Handle", merge(bar, *ribs), "steel")
+    # Etched centimetre ruler along the top edge, on both faces.
+    ticks = [
+        superellipsoid((0.0003, 0.0025 if i % 2 == 0 else 0.0015, 0.0004), 0.5, (side * half, 0.0045 - (0.00125 if i % 2 == 0 else 0.00075), z), detail=3)
+        for i, z in enumerate(np.arange(0.005, back - 0.008, 0.005))
+        for side in (1.0, -1.0)
+    ]
+    m.add("Scale", merge(*ticks), "dark_steel", (0.0, 0.0, 0.0), "Handle")
+    # A #10 blade: the spine rises a little behind the point and falls to the shoulder, the belly runs up to the point
+    # from well back.
+    # The game cuts with this outline (src/Tools/BladeContact.cs), and every cutting depth is tuned on it: one point per
+    # corner, so each crosswise section's top is on the spine.
+    # The point and belly sit a millimetre below the handle's centre line.
+    tip = (-length, -0.001)
+    belly = (-length + 0.02, -0.006)
+    heel = (shoulder, -0.004)
+    m.add("Blade", _side_plate([(shoulder, 0.004), (shoulder - 0.012, 0.006), (-length + 0.015, 0.004), tip, belly, heel], 0.0008), "steel")
+    # The slot in the blade that the handle's tongue rides in, wide at the back where the blade goes on.
+    slot = [
+        (shoulder - 0.0015, 0.0013),
+        (shoulder - 0.0045, 0.0013),
+        (shoulder - 0.0055, 0.0008),
+        (shoulder - 0.015, 0.0008),
+        (shoulder - 0.0156, 0.0),
+        (shoulder - 0.015, -0.0008),
+        (shoulder - 0.0055, -0.0008),
+        (shoulder - 0.0045, -0.0013),
+        (shoulder - 0.0015, -0.0013),
+    ]
+    edge = [*_bezier(tip, tip, belly, 6), *_bezier(belly, belly, heel, 3), heel]
+    # The ground edge: a bright band along the belly up to the point, standing just proud of the blade.
+    inner = [(z + 0.0006, y + 0.0015) for z, y in reversed(edge[1:-1])]
+    m.add("Edge", _side_plate([*edge, (shoulder - 0.0035, heel[1] + 0.0012), *inner], 0.0009), "chrome", (0.0, 0.0, 0.0), "Blade")
+    # The handle's tongue under the blade, with the raised rib that shows through the slot.
+    tongue = [(shoulder + 0.001, -0.0022), (shoulder - 0.014, -0.0015), (shoulder - 0.017, 0.0), (shoulder - 0.014, 0.0015), (shoulder + 0.001, 0.0022)]
+    rib = [(shoulder + 0.001, 0.0012), *[(z, y * 0.9) for z, y in slot[1:-1]], (shoulder + 0.001, -0.0012)]
+    m.add("Fitting", merge(_side_plate(tongue, 0.0012), _side_plate(rib, 0.0018)), "steel", (0.0, 0.0, 0.0), "Handle")
+
+
+def _switchblade(m: Model, length: float) -> None:
+    """A switchblade: a black handle and a dark blade most of its length long, standing in the YZ plane edge down."""
+    start = -0.035
+    back = length * 0.62 - 0.035
     handle = superellipsoid((0.004, 0.011, back - start), 0.3, (0.0, 0.0, (back + start) * 0.5))
     grip = merge(*[superellipsoid((0.005, 0.012, 0.003), 0.4, (0.0, 0.0, z)) for z in np.linspace(-0.02, 0.02, 6)])
-    m.add("Handle", merge(handle, grip), "black_plastic" if dull else "steel")
+    m.add("Handle", merge(handle, grip), "black_plastic")
     # Straight spine on top, the belly of the edge curving down to the point.
     edge = [(start, 0.004), (start - 0.012, 0.006), (-length + 0.015, 0.004), (-length, -0.001), (-length + 0.02, -0.006), (start, -0.004)]
-    blade = extrude([(z, y) for z, y in edge], 0.0012 if dull else 0.0008)
-    # The outline runs along -Z from the handle; a quarter turn the other way would point the blade back through the hand.
-    m.add("Blade", rotated(blade, -np.pi / 2, Y), "dark_steel" if dull else "chrome")
+    m.add("Blade", _side_plate(edge, 0.0012), "dark_steel")
 
 
-def _tweezers(m: Model, length: float, jaw_len: float, width: float, ringed: bool, material: str) -> None:
-    """Forceps, hemostats and needle holders. The hinge sits at the back for forceps, at the box joint for ringed tools."""
-    hinge_z = -length + jaw_len if ringed else 0.03
+def _thumb_forceps(m: Model, length: float) -> None:
+    """Dressing forceps: two flat spring-steel arms welded together at the back, standing on edge (thin across X, the way
+    they open) like a real pair held in a pencil grip. Each arm widens into a grip with crosswise grooves on its outer
+    face and narrows to a fine tip; JawA carries one tooth and JawB two, meeting at the tip when closed."""
+    back = 0.02
+    hinge = (0.0, 0.0, back)
+    half = 0.0007
+    # Centre of each arm off the axis, and its half height along it: joined at the back, bowed apart through the grip,
+    # touching along the last two centimetres.
+    stations = [
+        (back, 0.0013, 0.0034),
+        (back - 0.012, 0.0024, 0.0038),
+        (-0.03, 0.0046, 0.0042),
+        (-0.06, 0.004, 0.0034),
+        (-length + 0.035, 0.0019, 0.0018),
+        (-length + 0.018, half, 0.0011),
+        (-length + 0.002, half, 0.0008),
+        (-length, half * 0.7, 0.0005),
+    ]
+    # JawA is on -X: the game turns it toward -X to open (ToolAnimator), so the tips swing apart.
+    for name, side in (("JawA", -1.0), ("JawB", 1.0)):
+        arm = tube([(side * x, 0.0, z) for z, x, _ in stations], [(h, half) for _, _, h in stations], ring=12, exponent=4.0)
+        # Serrations: dark crosswise grooves on the outer face where the thumb and finger press.
+        grip_z, grip_x = [z for z, _, _ in stations[3::-1]], [x for _, x, _ in stations[3::-1]]
+        grooves = [
+            superellipsoid((0.0004, 0.0064, 0.0006), 0.4, (side * (float(np.interp(z, grip_z, grip_x)) + half), 0.0, z), detail=4)
+            for z in np.linspace(-0.052, -0.012, 16)
+        ]
+        # Tissue teeth on the inner face of the tip: one on JawA, two on JawB to either side of it.
+        teeth = [
+            superellipsoid((0.0009, 0.0004, 0.0005), 0.5, (side * 0.00005, y, -length + 0.0012), detail=4)
+            for y in ((0.0,) if name == "JawA" else (-0.00045, 0.00045))
+        ]
+        parts = [arm, *teeth]
+        if name == "JawA":
+            # The weld block that joins the arms at the back rides on JawA.
+            parts.append(superellipsoid((0.0042, 0.0068, 0.006), 0.3, (0.0, 0.0, back - 0.002), detail=6))
+        m.add(name, merge(*parts), "steel", hinge)
+        m.add(f"Serrations{name[-1]}", merge(*grooves), "dark_steel", hinge, name)
+
+
+def _hemostat(m: Model, length: float) -> None:
+    """A Kelly hemostat: long slim jaws with fine grooves."""
+    _ring_clamp(m, length, 0.035, 9, (0.0011, 0.0007), "steel")
+
+
+def _ring_clamp(m: Model, length: float, jaw_len: float, grooves: int, tip: tuple[float, float], ring_material: str) -> None:
+    """Ring handles, a ratchet that locks it shut, a box joint and straight jaws with crosswise grooves.
+    It opens in the XZ plane about the joint like scissors, so each arm crosses there: JawA's ring is on +X, its jaw on
+    -X, and the game's turn of JawA swings its jaw away from JawB's.
+    tip is the jaw's (half height, half width) at its end."""
+    joint = -length + jaw_len
+    half_y = 0.0021
     for name, side in (("JawA", 1.0), ("JawB", -1.0)):
-        if ringed:
-            arm = tube(
-                [(side * 0.006, 0.0, 0.05), (side * 0.004, 0.0, 0.0), (side * 0.0015, 0.0, hinge_z), (side * 0.0008, 0.0, -length)],
-                [(0.0025, 0.002), (0.0022, 0.002), (0.002, 0.0018), (0.0012, 0.0012)],
-                ring=10,
-            )
-            ring = torus(0.009, 0.0022, (side * 0.012, 0.0, 0.06), "y")
-            mesh = merge(arm, ring)
-        else:
-            mesh = tube(
-                [(0.0, 0.0, 0.03), (side * width, 0.0, -length * 0.2), (side * width * 0.4, 0.0, -length * 0.8), (side * 0.0008, 0.0, -length)],
-                [(0.0012, 0.004), (0.0012, 0.0045), (0.001, 0.003), (0.0008, 0.0015)],
-                ring=10,
-            )
-        m.add(name, mesh, material, (0.0, 0.0, hinge_z))
+        shank = tube(
+            [(side * 0.0075, 0.0, 0.053), (side * 0.0058, 0.0, 0.03), (side * 0.0024, 0.0, joint + 0.02), (side * 0.0009, 0.0, joint + 0.006)],
+            [(half_y, 0.0014), (half_y, 0.0014), (half_y, 0.0015), (half_y, 0.0016)],
+            ring=8,
+            exponent=4.0,
+            smooth=3,
+        )
+        # The jaw carries on across the joint to the far side, so the closed jaws meet face to face on the axis.
+        cross = tube(
+            [(side * 0.0009, 0.0, joint + 0.006), (-side * 0.0009, 0.0, joint - 0.004), (-side * 0.0011, 0.0, joint - 0.008)],
+            [(half_y, 0.0016), (half_y, 0.0012), (0.0018, 0.0011)],
+            ring=8,
+            exponent=4.0,
+            smooth=4,
+        )
+        # The straight grip is lofted without smoothing so its crosswise V grooves stay sharp.
+        # Each groove is a dip in the section's height, on the jaw's own taper, so it is cut in rather than stuck on.
+        grip_z = [joint - 0.008]
+        for z in np.linspace(joint - 0.011, -length + 0.002, grooves):
+            grip_z += [z + 0.0004, z, z - 0.0004]
+        grip_z.append(-length)
+        t = (np.array(grip_z) - grip_z[0]) / (grip_z[-1] - grip_z[0])
+        dip = np.array([0.0] + [0.0, 0.00025, 0.0] * grooves + [0.0])
+        grip = tube(
+            [(-side * (0.0011 - 0.0003 * k), 0.0, z) for k, z in zip(t, grip_z, strict=True)],
+            [(0.0018 + (tip[0] - 0.0018) * k - d, 0.0011 + (tip[1] - 0.0011) * k) for k, d in zip(t, dip, strict=True)],
+            ring=8,
+            exponent=4.0,
+            smooth=1,
+        )
+        jaw = merge(cross, grip)
+        # The rings sit where the "rings" and "needle" grips put the thumb and ring finger (GripStyle.cs).
+        ring = torus(0.0085, 0.0017, (side * 0.0135, 0.0, 0.06), "y", (20, 6))
+        # Ratchet: a toothed tab from each shank across the axis, JawA's above JawB's and half a tooth along, so the
+        # teeth interlock when shut.
+        teeth = [
+            moved(trimesh.creation.box((0.0068, 0.0012, 0.0008)), (side * 0.0031, side * 0.0006, 0.037 + k * 0.0016 + (side < 0) * 0.0008)) for k in range(4)
+        ]
+        parts = [shank, jaw, *teeth]
+        if side > 0:
+            # The box lock JawB passes through, with the rivet's heads on both faces.
+            parts.append(superellipsoid((0.006, 0.0047, 0.0082), 0.25, (0.0, 0.0, joint), detail=4))
+        m.add(name, merge(*parts), "steel", (0.0, 0.0, joint))
+        m.add(f"Ring{name[-1]}", ring, ring_material, (0.0, 0.0, joint), name)
+    heads = [cylinder(0.0016, (0.0, y, joint), (0.0, y + 0.0004 * np.sign(y), joint), 8) for y in (0.0023, -0.0023)]
+    m.add("Rivet", merge(*heads), "dark_steel", (0.0, 0.0, joint), "JawA")
 
 
 def _needle(m: Model, length: float) -> None:
-    _tweezers(m, length, 0.018, 0.0, True, "steel")
-    # The sharp point is the tool's exact gameplay tip. Six millimetres back, the curve crosses the holder's axis
-    # between both jaws; the old transverse arc floated around their ends instead of being gripped by them.
-    radius = 0.012
-    clamp_back = 0.006
+    """A Mayo-Hegar needle holder: short stout jaws and gold rings, the mark of tungsten carbide jaw inserts."""
+    # The jaws stop short of the tool's tip, so the loaded needle's sharp end reaches out ahead of them.
+    reach = 0.006
+    _ring_clamp(m, length - reach, 0.02, 3, (0.0015, 0.001), "gold")
+    # The sharp end is the gameplay tip and points forward along the holder.
+    # From there the curve runs back between both jaws, three millimetres behind their tip, and hangs down under them.
+    radius = 0.014
+    clamp_back = reach + 0.003
     center_y = -np.sqrt(radius * radius - (clamp_back * 0.5) ** 2)
     center_z = -length + clamp_back * 0.5
     tip_angle = np.arctan2(-clamp_back * 0.5, -center_y)
-    # Its plane is vertical when the holder is horizontal: the curve hangs below the jaws and its sharp tangent
-    # points down and forward into the aiming point, like a real loaded needle holder.
-    arc = [(0.0, center_y + radius * np.cos(t), center_z + radius * np.sin(t)) for t in np.linspace(tip_angle, 2.7, 14)]
-    m.add("SutureNeedle", tube(arc, [(0.0007, 0.0007)] * len(arc), ring=6, up=(1.0, 0.0, 0.0)), "chrome", (0.0, 0.0, -length), "JawA")
+    arc = [(0.0, center_y + radius * np.cos(t), center_z + radius * np.sin(t)) for t in np.linspace(tip_angle, 2.6, 14)]
+    m.add("SutureNeedle", tube(arc, [(0.0007, 0.0007)] * len(arc), ring=6, up=(1.0, 0.0, 0.0), smooth=2), "chrome", (0.0, 0.0, -length), "JawA")
 
 
 def _retractor(m: Model, length: float) -> None:
@@ -1393,7 +1552,7 @@ def _iv_catheter(m: Model, length: float) -> None:
 
 def _misc(m: Model, kind: str, length: float) -> None:
     if kind == "switchblade":
-        _scalpel(m, length, True)
+        _switchblade(m, length)
     elif kind == "lighter":
         m.add("Body", superellipsoid((0.022, 0.012, length * 0.75), 0.35, (0.0, 0.0, -length * 0.35)), "tint")
         m.add("Hood", superellipsoid((0.018, 0.011, length * 0.22), 0.35, (0.0, 0.0, -length * 0.82)), "chrome")
@@ -1437,9 +1596,9 @@ def _misc_maker(kind: str, model: Model, length: float) -> None:
 def build() -> list[Model]:
     lengths = tool_lengths()
     makers: dict[str, Callable[[Model, float], None]] = {
-        "scalpel": lambda m, length: _scalpel(m, length, False),
-        "forceps": lambda m, length: _tweezers(m, length, 0.0, 0.006, False, "steel"),
-        "hemostat": lambda m, length: _tweezers(m, length, 0.035, 0.0, True, "steel"),
+        "scalpel": _scalpel,
+        "forceps": _thumb_forceps,
+        "hemostat": _hemostat,
         "retractor": _retractor,
         "gelpi": _gelpi,
         "needle": _needle,

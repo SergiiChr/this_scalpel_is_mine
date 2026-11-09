@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 import trimesh
 
-from .geometry import Model, cylinder, ellipsoid, lathe, merge, moved, superellipsoid, torus, tube
+from .geometry import Model, cylinder, ellipsoid, lathe, merge, moved, rotated, rounded_slab, scaled, superellipsoid, torus, tube
 
 TABLE_HEIGHT = 0.85
 # The rail across the table's head end that the patient card hangs on: its hook (CardHook in src/World/Room.cs) goes
@@ -25,6 +25,8 @@ MONITOR_POLE = (1.075, -0.2)
 # Small trays on the instrument tray for scalpel and forceps, and for cotton pads: corner x, z, width, depth from the
 # tray's middle. Same as "instruments" and "swabs" in Room.TrayZones (src/World/Room.cs).
 SMALL_TRAYS = ((0.09, -0.36, 0.16, 0.26), (0.14, -0.07, 0.06, 0.06))
+# The instrument tray's casters are this size of a cart's, their plates just under its legs' ends.
+CASTER_SIZE = 0.62
 # Hand-made models some props are built from. The .gdignore there keeps Godot from importing them as game assets.
 SOURCES = Path(__file__).resolve().parent / "sources"
 # glove_box.glb node -> part and palette material. Every other node is a glove.
@@ -51,78 +53,127 @@ def _block(size: tuple[float, float, float], center: tuple[float, float, float])
     return superellipsoid(size, 0.06, center, detail=6)
 
 
-def _caster(x: float, z: float) -> list[trimesh.Trimesh]:
-    """A swivel caster under a corner: its plate, the fork either side of the wheel and the stem, steel."""
-    return [
-        _block((0.06, 0.008, 0.06), (x, 0.096, z)),
-        cylinder(0.012, (x, 0.092, z), (x, 0.075, z), 10),
-        _block((0.005, 0.05, 0.04), (x - 0.022, 0.06, z + 0.012)),
-        _block((0.005, 0.05, 0.04), (x + 0.022, 0.06, z + 0.012)),
-        cylinder(0.006, (x - 0.026, 0.045, z + 0.02), (x + 0.026, 0.045, z + 0.02), 8),
+def _caster(x: float, z: float, size: float = 1.0, heading: float = 0.0) -> list[trimesh.Trimesh]:
+    """A swivel caster under a corner: its plate, the fork either side of the wheel and the stem, steel.
+    size scales it from the floor up; heading turns it about its stem, from rolling along Z."""
+    parts = [
+        _block((0.06, 0.008, 0.06), (0.0, 0.096, 0.0)),
+        cylinder(0.012, (0.0, 0.092, 0.0), (0.0, 0.075, 0.0), 10),
+        _block((0.005, 0.05, 0.04), (-0.022, 0.06, 0.012)),
+        _block((0.005, 0.05, 0.04), (0.022, 0.06, 0.012)),
+        cylinder(0.006, (-0.026, 0.045, 0.02), (0.026, 0.045, 0.02), 8),
     ]
+    return [_placed(part, x, z, size, heading) for part in parts]
 
 
-def _wheel(x: float, z: float) -> trimesh.Trimesh:
-    """The rubber wheel in a caster's fork."""
-    return cylinder(0.045, (x - 0.014, 0.045, z + 0.02), (x + 0.014, 0.045, z + 0.02), 20)
+def _wheel(x: float, z: float, size: float = 1.0, heading: float = 0.0) -> trimesh.Trimesh:
+    """The rubber wheel in a caster's fork, sized and turned as the caster."""
+    return _placed(cylinder(0.045, (-0.014, 0.045, 0.02), (0.014, 0.045, 0.02), 20), x, z, size, heading)
+
+
+def _placed(part: trimesh.Trimesh, x: float, z: float, size: float, heading: float) -> trimesh.Trimesh:
+    """A caster part built about its stem on the floor, scaled, turned about the stem and moved to (x, z)."""
+    return moved(rotated(scaled(part, (size, size, size)), heading, (0.0, 1.0, 0.0)), (x, 0.0, z))
 
 
 def _operating_table() -> Model:
+    """A general surgery table: a floor plinth with brake pedals, one column flaring into the tabletop, sectioned foam
+    pads on a steel frame with hinge pins, and flat accessory rails on standoffs along both sides.
+    A hand pendant hangs on the foot end.
+    The pads' top stays at TABLE_HEIGHT: the game lands blood on pads and frame (BedLiquidSurface)."""
     m = Model("props", "operating_table")
-    m.add("Base", superellipsoid((0.7, 0.08, 0.45), 0.25, (0.0, 0.04, 0.0)), "dark_steel")
-    m.add("Column", superellipsoid((0.22, TABLE_HEIGHT - 0.2, 0.16), 0.3, (0.0, (TABLE_HEIGHT - 0.2) / 2 + 0.08, 0.0)), "steel")
-    # Runs from x -1.3 (feet) to 1.0 (head), long enough for the whole patient to lie on it.
-    m.add("Frame", superellipsoid((2.3, 0.05, 0.56), 0.15, (-0.15, TABLE_HEIGHT - 0.075, 0.0)), "steel")
-    pads = [superellipsoid((length, 0.06, 0.56), 0.35, (x, TABLE_HEIGHT - 0.03, 0.0)) for x, length in ((-0.85, 0.88), (0.0, 0.8), (0.62, 0.42), (0.92, 0.16))]
+    m.add("Base", superellipsoid((0.82, 0.05, 0.54), 0.15, (0.0, 0.025, 0.0), detail=6), "dark_steel")
+    # One lofted pillar: flared onto the plinth, a slim waist, and flared again into the block under the tabletop.
+    column = [(0.05, 0.2, 0.14), (0.1, 0.15, 0.11), (0.2, 0.13, 0.095), (0.58, 0.11, 0.08), (0.68, 0.12, 0.09), (0.73, 0.2, 0.14), (0.75, 0.23, 0.16)]
+    m.add("Column", tube([(0.0, y, 0.0) for y, _, _ in column], [(x, z) for _, x, z in column], ring=20, exponent=4.0, up=(1.0, 0.0, 0.0)), "steel")
+    # Runs from x -1.3 (feet) to 1.0 (head), long enough for the whole patient to lie on it, in four sections: legs,
+    # seat and back, chest and the head rest. The foam pads sit on one steel frame, with hinge pins under the joints.
+    sections = ((-0.85, 0.88), (0.0, 0.8), (0.62, 0.42), (0.92, 0.16))
+    frame = [rounded_slab((2.29, 0.04, 0.54), 0.02, 0.006, (-0.145, TABLE_HEIGHT - 0.075, 0.0))]
+    hinges = [cylinder(0.011, (x, TABLE_HEIGHT - 0.085, -0.25), (x, TABLE_HEIGHT - 0.085, 0.25), 10) for x in (-0.405, 0.405, 0.835)]
+    m.add("Frame", merge(*frame, *hinges), "steel")
+    pads = [rounded_slab((length, 0.06, 0.56), 0.035, 0.018, (x, TABLE_HEIGHT - 0.03, 0.0)) for x, length in sections]
     m.add("Pads", merge(*pads), "mattress")
     low = TABLE_HEIGHT - 0.07
-    rails = [cylinder(0.008, (-1.25, low, s * 0.3), (0.95, low, s * 0.3), 8) for s in (-1, 1)]
-    # The side rails carry on round the head end and up into a bar above the pads.
+    # Flat side rails, the kind arm boards and screens clamp onto, held off the frame by standoffs.
+    rails = []
+    for s in (-1, 1):
+        rails.append(moved(trimesh.creation.box((2.2, 0.03, 0.01)), (-0.15, low, s * 0.3)))
+        rails += [moved(trimesh.creation.box((0.03, 0.02, 0.03)), (x, low, s * 0.285)) for x in (-1.15, -0.45, 0.25, 0.9)]
+    # The rails carry on round the head end and up into a bar above the pads.
     bends = [(0.95, low, -0.3), (HEAD_RAIL_X, low, -0.3), (HEAD_RAIL_X, HEAD_RAIL_TOP, -0.3)]
     bends += [(x, y, -z) for x, y, z in reversed(bends)]
     rails += [cylinder(0.008, a, b, 8) for a, b in pairwise(bends)]
     rails += [ellipsoid((0.008, 0.008, 0.008), bend, 1) for bend in bends[1:-1]]
     m.add("Rails", merge(*rails), "chrome")
-    m.add("Pedals", merge(*[superellipsoid((0.08, 0.02, 0.05), 0.4, (x, 0.09, 0.25)) for x in (-0.12, 0.12)]), "black_plastic")
+    pedals = [superellipsoid((0.09, 0.025, 0.06), 0.3, (x, 0.04, 0.3), detail=4) for x in (-0.13, 0.13)]
+    # The hand pendant hangs by its hook from the foot end rail, its coiled cord running down into the base.
+    pendant_x, pendant_z = -1.05, 0.315
+    hook_path = [(pendant_x, low - 0.06, pendant_z), (pendant_x, low + 0.02, pendant_z), (pendant_x, low + 0.02, pendant_z - 0.02)]
+    hook = tube(hook_path, [(0.003, 0.003)] * 3, ring=6)
+    body = superellipsoid((0.06, 0.15, 0.03), 0.3, (pendant_x, low - 0.135, pendant_z + 0.005), detail=4)
+    cord_path = [(pendant_x, low - 0.21, pendant_z), (pendant_x + 0.1, 0.3, pendant_z - 0.02), (-0.4, 0.1, 0.25), (-0.32, 0.04, 0.2)]
+    cord = tube(cord_path, [(0.004, 0.004)] * 4, ring=6)
+    m.add("Pendant", merge(body, hook, cord), "black_plastic")
+    m.add("Pedals", merge(*pedals), "black_plastic")
     return m
 
 
 def _instrument_tray() -> Model:
+    """A steel instrument table on one telescoping column: a sheet tray with a rolled rim over two rails, a height collar
+    with its knob, and a five-leg base on casters. Its top stays at TraySurface (src/World/Room.cs), where tools lie."""
     m = Model("props", "instrument_tray")
-    m.add("Base", _wheels(0.025, 0.3), "dark_steel")
-    m.add("Pole", cylinder(0.02, (0.0, 0.05, 0.0), (0.0, 0.88, 0.0)), "steel")
-    tray = superellipsoid((0.7, 0.02, 0.8), 0.12, (0.0, 0.895, 0.0))
-    rim = merge(
-        *[
-            superellipsoid(size, 0.2, c)
-            for size, c in (
-                ((0.72, 0.03, 0.015), (0.0, 0.91, 0.4)),
-                ((0.72, 0.03, 0.015), (0.0, 0.91, -0.4)),
-                ((0.015, 0.03, 0.8), (0.35, 0.91, 0.0)),
-                ((0.015, 0.03, 0.8), (-0.35, 0.91, 0.0)),
-            )
-        ]
+    legs, wheels = [], []
+    for i in range(5):
+        a = i * 2 * np.pi / 5 + np.pi / 2
+        end = np.array([np.cos(a), 0.0, np.sin(a)]) * 0.3
+        legs.append(tube([(0.0, 0.08, 0.0), (end[0], 0.065, end[2])], [(0.014, 0.02), (0.009, 0.014)], ring=8, exponent=3.0, smooth=1))
+        # Each caster rolls along its leg.
+        legs += _caster(float(end[0]), float(end[2]), CASTER_SIZE, float(np.arctan2(end[0], end[2])))
+        wheels.append(_wheel(float(end[0]), float(end[2]), CASTER_SIZE, float(np.arctan2(end[0], end[2]))))
+    m.add("Base", merge(*legs, cylinder(0.04, (0.0, 0.05, 0.0), (0.0, 0.1, 0.0), 16)), "dark_steel")
+    m.add("Wheels", merge(*wheels), "rubber")
+    column = merge(
+        cylinder(0.024, (0.0, 0.1, 0.0), (0.0, 0.56, 0.0), 16),
+        cylinder(0.017, (0.0, 0.56, 0.0), (0.0, 0.86, 0.0), 16),
     )
-    m.add("Tray", merge(tray, rim), "steel")
-    m.add("Drape", superellipsoid((0.66, 0.004, 0.76), 0.15, (0.0, 0.907, 0.0)), "gown")
+    m.add("Pole", column, "steel")
+    collar = merge(
+        cylinder(0.03, (0.0, 0.54, 0.0), (0.0, 0.58, 0.0), 16),
+        cylinder(0.005, (0.0, 0.56, 0.0), (0.0, 0.56, 0.06), 8),
+        superellipsoid((0.022, 0.022, 0.012), 0.6, (0.0, 0.56, 0.065), detail=4),
+    )
+    m.add("Collar", collar, "black_plastic")
+    rails = [_block((0.03, 0.02, 0.7), (x, 0.883, 0.0)) for x in (-0.2, 0.2)]
+    bracket = merge(_block((0.44, 0.02, 0.05), (0.0, 0.871, 0.0)), cylinder(0.026, (0.0, 0.85, 0.0), (0.0, 0.862, 0.0), 16))
+    sheet = rounded_slab((0.7, 0.012, 0.8), 0.05, 0.003, (0.0, 0.899, 0.0))
+    rim = tube(*_rounded_loop(0.69, 0.79, 0.045, 0.909, (0.008, 0.008)), ring=10, smooth=1)
+    m.add("Tray", merge(sheet, rim, bracket, *rails), "steel")
+    m.add("Drape", rounded_slab((0.66, 0.006, 0.76), 0.03, 0.002, (0.0, 0.906, 0.0)), "gown")
     m.add("SmallTrays", merge(*[_small_tray(*area) for area in SMALL_TRAYS]), "steel")
     return m
 
 
+def _rounded_loop(
+    width: float, depth: float, corner: float, y: float, radii: tuple[float, float], at: tuple[float, float] = (0.0, 0.0)
+) -> tuple[list[tuple[float, float, float]], list[tuple[float, float]]]:
+    """A closed path round a rounded rectangle in the XZ plane, with `radii` at every point, for `tube`. It starts and
+    ends mid side, where the tube's seam is least seen."""
+    hx, hz = width / 2 - corner, depth / 2 - corner
+    path = [(at[0], y, at[1] + depth / 2)]
+    for cx, cz, a0 in ((hx, hz, 90), (hx, -hz, 0), (-hx, -hz, -90), (-hx, hz, -180)):
+        for a in np.radians(np.linspace(a0, a0 - 90, 4)):
+            path.append((at[0] + cx + corner * np.cos(a), y, at[1] + cz + corner * np.sin(a)))
+    path.append(path[0])
+    return path, [radii] * len(path)
+
+
 def _small_tray(x: float, z: float, width: float, depth: float) -> trimesh.Trimesh:
     """A shallow steel tray on the drape, its corner at (x, z). Floor top 4 mm and rim 16 mm above the surface."""
-    cx, cz = x + width / 2, z + depth / 2
-    floor = superellipsoid((width, 0.006, depth), 0.2, (cx, 0.916, cz))
-    walls = [
-        superellipsoid(size, 0.2, c)
-        for size, c in (
-            ((width, 0.018, 0.006), (cx, 0.922, z + 0.003)),
-            ((width, 0.018, 0.006), (cx, 0.922, z + depth - 0.003)),
-            ((0.006, 0.018, depth), (x + 0.003, 0.922, cz)),
-            ((0.006, 0.018, depth), (x + width - 0.003, 0.922, cz)),
-        )
-    ]
-    return merge(floor, *walls)
+    at = (x + width / 2, z + depth / 2)
+    floor = rounded_slab((width, 0.004, depth), 0.008, 0.001, (at[0], 0.917, at[1]))
+    wall = tube(*_rounded_loop(width - 0.006, depth - 0.006, 0.006, 0.923, (0.008, 0.003), at), ring=8, exponent=4.0, smooth=1)
+    return merge(floor, wall)
 
 
 def _iv_stand() -> Model:
@@ -138,23 +189,80 @@ def _iv_stand() -> Model:
 
 
 def _shelf() -> Model:
+    """A white wall shelf on steel L brackets with a row of reference books and ring binders, spines out, and the game's
+    thick red manual. The wall is at -Z; the ambulance keeps only the manual and its label (Room.Ambulance.cs)."""
     m = Model("props", "manual")
-    m.add("Board", superellipsoid((0.8, 0.03, 0.3), 0.15, (0.0, 1.2, 0.0)), "wood")
-    brackets = [
-        merge(superellipsoid((0.02, 0.25, 0.02), 0.2, (x, 1.07, -0.13)), superellipsoid((0.02, 0.02, 0.26), 0.2, (x, 1.18, 0.0))) for x in (-0.33, 0.33)
-    ]
+    top = 1.215
+    back = -0.15
+    m.add("Board", superellipsoid((0.8, 0.03, 0.3), 0.12, (0.0, top - 0.015, 0.0), detail=6), "wood")
+    brackets = []
+    for x in (-0.3, 0.3):
+        brackets += [
+            moved(trimesh.creation.box((0.025, 0.2, 0.004)), (x, top - 0.13, back + 0.002)),
+            moved(trimesh.creation.box((0.025, 0.004, 0.25)), (x, top - 0.032, back + 0.125)),
+            tube([(x, top - 0.21, back + 0.004), (x, top - 0.034, back + 0.2)], [(0.004, 0.006)] * 2, ring=6, exponent=4.0),
+        ]
     m.add("Brackets", merge(*brackets), "dark_steel")
-    books = []
+
+    def volume(x: float, width: float, height: float, depth: float, lean: float = 0.0) -> tuple[trimesh.Trimesh, trimesh.Trimesh]:
+        """A hardcover's boards and spine, and its page block 3 mm inside them, standing at x."""
+        z = back + 0.01 + depth / 2
+        cover = merge(
+            moved(trimesh.creation.box((0.003, height, depth)), (x - width / 2 + 0.0015, top + height / 2, z)),
+            moved(trimesh.creation.box((0.003, height, depth)), (x + width / 2 - 0.0015, top + height / 2, z)),
+            moved(trimesh.creation.box((width, height, 0.004)), (x, top + height / 2, z + depth / 2 - 0.002)),
+        )
+        pages = moved(trimesh.creation.box((width - 0.006, height - 0.006, depth - 0.006)), (x, top + height / 2 - 0.003, z - 0.003))
+        if lean:
+            cover, pages = (rotated(part, lean, (0.0, 0.0, 1.0), (x + width / 2, top, z)) for part in (cover, pages))
+        return cover, pages
+
+    books, binders, pages = [], [], []
     rng = np.random.default_rng(4)
-    x = -0.36
-    for _ in range(9):
-        w = rng.uniform(0.025, 0.045)
-        h = rng.uniform(0.2, 0.27)
-        books.append(superellipsoid((w, h, 0.18), 0.2, (x + w / 2, 1.215 + h / 2, 0.0)))
-        x += w + 0.003
+    x = -0.37
+    # Reference books of mixed size, then three blue binders with paper labels and finger holes.
+    for _ in range(5):
+        width, height = rng.uniform(0.028, 0.045), rng.uniform(0.2, 0.25)
+        cover, block = volume(x + width / 2, width, height, rng.uniform(0.15, 0.19))
+        books.append(cover)
+        pages.append(block)
+        x += width + 0.002
+    labels, holes = [], []
+    for _ in range(3):
+        width = 0.055
+        cover, block = volume(x + width / 2, width, 0.29, 0.22)
+        binders.append(cover)
+        pages.append(block)
+        labels.append(moved(trimesh.creation.box((0.035, 0.09, 0.002)), (x + width / 2, top + 0.2, back + 0.231)))
+        holes.append(cylinder(0.009, (x + width / 2, top + 0.07, back + 0.229), (x + width / 2, top + 0.07, back + 0.232), 8))
+        x += width + 0.002
+    manual_x = 0.2
+    # A last book leans on the manual.
+    cover, block = volume(manual_x - 0.04 - 0.042, 0.032, 0.22, 0.17, -0.12)
+    books.append(cover)
+    pages.append(block)
     m.add("Books", merge(*books), "leather")
-    m.add("Manual", superellipsoid((0.05, 0.28, 0.2), 0.2, (0.2, 1.355, 0.0)), "red_plastic")
-    m.add("Spine", superellipsoid((0.052, 0.04, 0.2), 0.2, (0.2, 1.42, 0.0)), "gold")
+    m.add("Binders", merge(*binders), "blue_plastic")
+    m.add("Pages", merge(*pages, *labels), "paper")
+    m.add("Holes", merge(*holes), "black_plastic")
+    # The manual is a thick red hardcover with a rounded spine and gold bands, so it stands out from the row.
+    # Its pages are a part of their own: the ambulance hides the shelf's other pages but keeps the manual.
+    width, height, depth = 0.08, 0.28, 0.21
+    z = back + 0.01 + depth / 2
+    board = trimesh.creation.box((0.004, height, depth - 0.012))
+    boards = [moved(board, (manual_x + side * (width / 2 - 0.002), top + height / 2, z - 0.006)) for side in (-1, 1)]
+    spine_z = back + 0.01 + depth - 0.012
+
+    def rounded(y0: float, y1: float, grow: float) -> trimesh.Trimesh:
+        """A length of the rounded spine between two heights, grown by `grow` all round."""
+        return tube([(manual_x, top + y0, spine_z), (manual_x, top + y1, spine_z)], [(0.012 + grow, width / 2 + grow)] * 2, ring=16, up=(0.0, 0.0, 1.0))
+
+    spine = rounded(0.0, height, 0.0)
+    m.add("Manual", merge(*boards, spine), "book_cloth")
+    m.add("ManualPages", moved(trimesh.creation.box((width - 0.008, height - 0.008, depth - 0.016)), (manual_x, top + height / 2, z - 0.008)), "paper")
+    bands = [rounded(y - 0.004, y + 0.004, 0.0008) for y in (0.025, 0.04, height - 0.04, height - 0.025)]
+    bands.append(moved(trimesh.creation.box((width * 0.5, 0.05, 0.002)), (manual_x, top + 0.19, spine_z + 0.0125)))
+    m.add("Spine", merge(*bands), "gold")
     return m
 
 

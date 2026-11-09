@@ -94,7 +94,8 @@ It takes no key frames.
   container. Run that after changes that may cost drawing time (shaders, lighting, models, many new nodes).
 - `./build.py shots [scenario] [out dir]`: renders views of a scenario (software OpenGL under `xvfb-run`, up to 10
   minutes). Headless tests don't compile shaders, so run it after any shader, lighting or model change and look at the
-  PNGs. Other views: `SHOTS_ARGS=--materials|--anatomy|--syringe|--menus` (see `tests/Support/Screenshot.cs`).
+  PNGs. Other views: `SHOTS_ARGS=--materials|--anatomy|--syringe|--menus|--tool=<id>|--prop=<key>` (see
+  `tests/Support/Screenshot.cs`).
   `RENDERER=forward_plus` checks the default renderer (needs `apt-get install mesa-vulkan-drivers`).
 - `./build.py lint`: C# analyzers, `dotnet format`, the `ExportRelease` build, ruff and strict mypy.
 - `./build.py build`: full regression, then exports the game and starts it once.

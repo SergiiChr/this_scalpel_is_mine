@@ -73,6 +73,7 @@ public static class Materials {
         ["paper"] = "cloth",
         ["hair"] = "cloth",
         ["leather"] = "cloth",
+        ["book_cloth"] = "cloth",
         ["steel"] = "metal",
         ["dark_steel"] = "metal",
         ["chrome"] = "metal",
