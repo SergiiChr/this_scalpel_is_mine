@@ -45,7 +45,7 @@ public partial class Room {
             "gloves" => ["Cabinet", "Drawers", "Handles", "Steel", "Wheels", "Grip", "Organizer", "Bins", "Labels"],
             "sanitizer" => ["Cabinet", "Doors", "Handles"],
             "defib_cart" => ["Body", "Drawers", "Lock", "Handles", "Wheels"],
-            "iv" => ["Base"],
+            "iv" => ["Base", "Casters"],
             "manual" => ["Board", "Brackets", "Books", "Binders", "Pages", "Holes"],
             _ => [],
         };

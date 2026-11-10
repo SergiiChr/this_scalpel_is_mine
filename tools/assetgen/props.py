@@ -178,13 +178,30 @@ def _small_tray(x: float, z: float, width: float, depth: float) -> trimesh.Trime
 
 
 def _iv_stand() -> Model:
+    """IV pole: a five-leg cast base on twin-wheel casters, a chrome pole with a knob-locked upper section, and four
+    ram's horn hooks on a crown at the top. The +X hook holds the bag over the drip chamber at Room.IvDripPoint.
+    The ambulance hangs the pole on the wall and hides the base and casters (Room.Ambulance.cs)."""
     m = Model("props", "iv")
-    m.add("Base", _wheels(0.022, 0.25), "dark_steel")
-    m.add("Pole", cylinder(0.012, (0.0, 0.05, 0.0), (0.0, 1.95, 0.0)), "chrome")
-    hooks = [tube([(0.0, 1.9, 0.0), (s * 0.08, 1.93, 0.0), (s * 0.1, 1.88, 0.0)], [(0.004, 0.004)] * 3, ring=8) for s in (-1, 1)]
+    legs, casters = [cylinder(0.035, (0.0, 0.06, 0.0), (0.0, 0.13, 0.0), 12)], []
+    for i in range(5):
+        a = i * 2 * np.pi / 5 + np.pi / 2
+        end = np.array([np.cos(a), 0.0, np.sin(a)]) * 0.3
+        legs.append(tube([(0.0, 0.1, 0.0), (end[0], 0.07, end[2])], [(0.016, 0.022), (0.01, 0.014)], ring=8, exponent=3.0, smooth=1))
+        casters += _swivel_caster(float(end[0]), float(end[2]))
+    m.add("Base", merge(*legs), "steel")
+    m.add("Casters", merge(*casters), "black_plastic")
+    m.add("Pole", merge(cylinder(0.014, (0.0, 0.13, 0.0), (0.0, 1.2, 0.0), 12), cylinder(0.01, (0.0, 1.2, 0.0), (0.0, 1.93, 0.0), 12)), "chrome")
+    lock = merge(cylinder(0.02, (0.0, 1.17, 0.0), (0.0, 1.22, 0.0), 14), cylinder(0.005, (0.0, 1.195, 0.0), (0.0, 1.195, 0.045), 8))
+    m.add("Lock", merge(lock, superellipsoid((0.025, 0.025, 0.012), 0.5, (0.0, 1.195, 0.05), detail=5)), "black_plastic")
+    # Each hook runs out from the crown, dips where a bag hangs and curls back up to a ball tip.
+    hook = [(0.0, 1.925, 0.0), (0.05, 1.925, 0.0), (0.082, 1.905, 0.0), (0.1, 1.925, 0.0), (0.095, 1.955, 0.0)]
+    hooks = [cylinder(0.016, (0.0, 1.91, 0.0), (0.0, 1.94, 0.0), 12)]
+    for turn in range(4):
+        hooks.append(rotated(tube(hook, [(0.004, 0.004)] * len(hook), ring=6, up=(0.0, 0.0, 1.0), smooth=3), turn * np.pi / 2, (0.0, 1.0, 0.0)))
+        hooks.append(rotated(ellipsoid((0.007, 0.007, 0.007), hook[-1], 0), turn * np.pi / 2, (0.0, 1.0, 0.0)))
     m.add("Hooks", merge(*hooks), "chrome")
     # The bag itself is a tool hung on the hook (iv_drip in data/tools.cfg), so a syringe can go into it.
-    m.add("Chamber", merge(cylinder(0.008, (0.08, 1.66, 0.0), (0.08, 1.6, 0.0), 12), ellipsoid((0.004, 0.005, 0.004), (0.08, 1.63, 0.0))), "clear_plastic")
+    m.add("Chamber", merge(cylinder(0.008, (0.08, 1.66, 0.0), (0.08, 1.6, 0.0), 12), ellipsoid((0.004, 0.005, 0.004), (0.08, 1.63, 0.0), 1)), "clear_plastic")
     # The tubing itself is drawn by the game (src/World/IvLine.cs), from the chamber to wherever the line goes in.
     return m
 
