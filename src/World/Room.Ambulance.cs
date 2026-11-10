@@ -44,7 +44,7 @@ public partial class Room {
         string[] hidden = key switch {
             "gloves" => ["Cabinet", "Drawers", "Handles", "Steel", "Wheels", "Grip", "Organizer", "Bins", "Labels"],
             "sanitizer" => ["Cabinet", "Doors", "Handles"],
-            "defib_cart" => ["Body", "Handles", "Wheels"],
+            "defib_cart" => ["Body", "Drawers", "Lock", "Handles", "Wheels"],
             "iv" => ["Base"],
             "manual" => ["Board", "Brackets", "Books", "Binders", "Pages", "Holes"],
             _ => [],
