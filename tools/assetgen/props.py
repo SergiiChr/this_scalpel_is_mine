@@ -33,6 +33,10 @@ GLOVE_BOX_PARTS = {
     "Printed_Blue_Edge_Trim": ("Print", "carton_print"),
     "Inset_Dark_Slot": ("Slot", "black_plastic"),
 }
+# Top of the defibrillator on its cart, where the game parks its paddle: Room.DefibRoof (src/World/Room.cs).
+DEFIB_ROOF = 1.16
+# How much narrower the defibrillator is at its roof than at its foot, as a share of its width.
+DEFIB_TAPER = 0.18
 
 
 def _wheels(radius: float, spread: float, y: float = 0.0) -> trimesh.Trimesh:
@@ -646,15 +650,110 @@ def _delivery_tray() -> Model:
     return m
 
 
+def _coiled(path: list[tuple[float, float, float]], radius: float, turns: int) -> trimesh.Trimesh:
+    """A coiled cord wound round `path`: `turns` loops of `radius` along it, spread by length."""
+    points = np.asarray(path, float)
+    lengths = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(points, axis=0), axis=1))]
+    along = np.linspace(0.0, lengths[-1], turns * 8 + 1)
+    centers = np.column_stack([np.interp(along, lengths, points[:, i]) for i in range(3)])
+    coil = []
+    for i, center in enumerate(centers):
+        tangent = centers[min(i + 1, len(centers) - 1)] - centers[max(i - 1, 0)]
+        tangent /= np.linalg.norm(tangent)
+        side = np.cross(tangent, (0.0, 1.0, 0.0)) if abs(tangent[1]) < 0.9 else np.cross(tangent, (1.0, 0.0, 0.0))
+        side /= np.linalg.norm(side)
+        up = np.cross(side, tangent)
+        angle = i * np.pi / 4
+        coil.append(tuple(center + radius * (np.cos(angle) * side + np.sin(angle) * up)))
+    return tube(coil, [(0.004, 0.004)] * len(coil), ring=5, smooth=1)
+
+
 def _defib_cart() -> Model:
-    """Crash cart: red drawers, the defibrillator unit on top with its screen facing +Z. The paddles rest on the top."""
+    """Crash cart: a blue moulded cart with a rimmed top tray and white drawers set in its front, two shallow ones over
+    a deep one, the top one with an oval grip and a red breakaway seal. A white push frame runs up the front from the
+    front casters. The defibrillator stands on top, screen facing +Z, a paddle on each side.
+    The ambulance keeps only the defibrillator on its counter (Room.Ambulance.cs), so its bottom stays at 0.9 m."""
     m = Model("props", "defib_cart")
-    m.add("Body", superellipsoid((0.55, 0.85, 0.45), 0.08, (0.0, 0.47, 0.0)), "red_plastic")
-    drawers = [superellipsoid((0.48, 0.02, 0.01), 0.2, (0.0, y, 0.228)) for y in (0.25, 0.45, 0.65)]
-    m.add("Handles", merge(*drawers), "steel")
-    m.add("Wheels", merge(*[cylinder(0.035, (x - 0.01, 0.035, z), (x + 0.01, 0.035, z), 12) for x in (-0.22, 0.22) for z in (-0.17, 0.17)]), "black_plastic")
-    m.add("Unit", superellipsoid((0.34, 0.16, 0.26), 0.2, (0.0, 0.98, -0.07)), "plastic")
-    m.add("Screen", superellipsoid((0.2, 0.1, 0.01), 0.1, (0.0, 1.0, 0.062)), "screen")
+    rim = [((0.6, 0.035, 0.02), (0.0, 0.89, z)) for z in (-0.24, 0.24)] + [((0.02, 0.035, 0.46), (x, 0.89, 0.0)) for x in (-0.29, 0.29)]
+    tray = [moved(trimesh.creation.box(size), at) for size, at in [((0.6, 0.03, 0.5), (0.0, 0.86, 0.0)), *rim]]
+    grip_path, grip_radii = _rounded_loop(0.1, 0.035, 0.015, 0.0, (0.006, 0.006))
+    grip = moved(rotated(tube(grip_path, grip_radii, ring=6, smooth=1), np.pi / 2, (1.0, 0.0, 0.0)), (0.0, 0.76, 0.236))
+    m.add("Body", merge(_block((0.54, 0.7, 0.44), (0.0, 0.5, 0.0)), *tray, grip), "matte_blue_plastic")
+    # Each drawer front has a lip along its top edge to pull it by.
+    drawers, y = [], 0.81
+    for height in (0.1, 0.1, 0.43):
+        drawers.append(moved(trimesh.creation.box((0.44, height - 0.008, 0.016)), (0.0, y - height / 2, 0.224)))
+        drawers.append(moved(trimesh.creation.box((0.44, 0.018, 0.012)), (0.0, y - 0.013, 0.236)))
+        y -= height
+    m.add("Drawers", merge(*drawers), "matte_plastic")
+    m.add("Lock", merge(moved(trimesh.creation.box((0.03, 0.06, 0.006)), (-0.16, 0.74, 0.246))), "red_plastic")
+    # Up from one front caster, over the top drawer and down to the other.
+    frame = [(-0.25, 0.1, 0.25), (-0.25, 0.8, 0.25), (-0.24, 0.83, 0.25), (-0.2, 0.84, 0.25)]
+    frame += [(-x, y, z) for x, y, z in reversed(frame)]
+    m.add("Handles", tube(frame, [(0.014, 0.014)] * len(frame), ring=8, up=(0.0, 0.0, 1.0), smooth=3), "matte_plastic")
+    wheels = []
+    for x in (-0.25, 0.25):
+        for z in (-0.19, 0.25):
+            wheels += [
+                cylinder(0.012, (x, 0.15, z), (x, 0.1, z), 8),
+                moved(trimesh.creation.box((0.04, 0.05, 0.05)), (x, 0.085, z - 0.02)),
+                cylinder(0.05, (x - 0.016, 0.05, z - 0.035), (x + 0.016, 0.05, z - 0.035), 14),
+            ]
+    m.add("Wheels", merge(*wheels), "matte_plastic")
+    # The defibrillator: an orange back shell with a carry handle, and a grey front wrapping round its sides. The front
+    # has the screen in an orange frame with a row of soft keys under it, mode keys left, charge and shock right, the
+    # power button over the dial and the cable sockets along the bottom. A paddle sits in a holder on each side, its
+    # coiled cord running from a socket round the front and up into the paddle's foot. Their tops stay flat at
+    # DEFIB_ROOF, where the game's paddle parks face down (Room.StationTools()).
+    height, middle = DEFIB_ROOF - 0.9, (DEFIB_ROOF + 0.9) / 2
+    first_unit_part = len(m.parts)
+    carry = [(-0.09, middle + 0.1, -0.165), (-0.075, DEFIB_ROOF + 0.035, -0.165), (0.075, DEFIB_ROOF + 0.035, -0.165), (0.09, middle + 0.1, -0.165)]
+    m.add("Unit", superellipsoid((0.23, height, 0.12), 0.2, (0.0, middle, -0.12), detail=8), "matte_orange_plastic")
+    m.add("Carry", tube(carry, [(0.014, 0.018)] * 4, ring=8, up=(0.0, 0.0, 1.0), smooth=3), "matte_orange_plastic")
+    m.add("Front", superellipsoid((0.24, height, 0.11), 0.25, (0.0, middle, -0.035), detail=8), "matte_grey_plastic")
+    screen_frame = moved(trimesh.creation.box((0.19, 0.125, 0.006)), (0.0, 1.085, 0.019))
+    key_strip = moved(trimesh.creation.box((0.19, 0.026, 0.006)), (0.0, 1.008, 0.019))
+    m.add("Bezel", merge(screen_frame, key_strip), "matte_orange_plastic")
+    m.add("Screen", moved(trimesh.creation.box((0.165, 0.1, 0.006)), (0.0, 1.088, 0.022)), "screen")
+    keys = [moved(trimesh.creation.box((0.026, 0.014, 0.006)), (x, 1.008, 0.024)) for x in (-0.066, -0.033, 0.0, 0.033, 0.066)]
+    keys += [moved(trimesh.creation.box((0.04, 0.022, 0.008)), (-0.075, y, 0.019)) for y in (0.975, 0.945)]
+    keys += [moved(trimesh.creation.box((0.05, 0.026, 0.008)), (0.072, y, 0.019)) for y in (0.977, 0.945)]
+    keys.append(cylinder(0.024, (0.0, 0.947, 0.016), (0.0, 0.947, 0.03), 16))
+    m.add("Keys", merge(*keys), "matte_plastic")
+    m.add("Power", cylinder(0.011, (0.0, 0.982, 0.016), (0.0, 0.982, 0.025), 12), "green_plastic")
+    m.add("Knob", cylinder(0.009, (0.0, 0.947, 0.03), (0.0, 0.947, 0.034), 10), "black_plastic")
+    for name, x, material in (("SocketA", -0.045, "green_plastic"), ("SocketB", 0.045, "yellow_plastic")):
+        m.add(name, cylinder(0.011, (x, 0.915, 0.012), (x, 0.915, 0.022), 12), material)
+    holders, paddles, cords = [], [], []
+    tips: dict[str, list[trimesh.Trimesh]] = {"yellow_plastic": [], "red_plastic": []}
+    for side in (-1, 1):
+        x = side * 0.125
+        holders.append(superellipsoid((0.05, 0.03, 0.17), 0.2, (x + side * 0.015, 0.92, -0.075), detail=6))
+        # The paddle: a plate against the case, solid at the back of its outer face and a grip round a slot at the
+        # front.
+        outer = x + side * 0.02
+        paddles.append(superellipsoid((0.02, 0.2, 0.15), 0.3, (x, 1.04, -0.075), detail=5))
+        paddles.append(superellipsoid((0.022, 0.19, 0.08), 0.3, (outer, 1.04, -0.11), detail=5))
+        corners = ((0.085, 0.0), (0.085, 0.02), (0.065, 0.04), (-0.065, 0.04), (-0.085, 0.02), (-0.085, -0.02), (-0.065, -0.04), (0.065, -0.04), (0.085, -0.02))
+        loop = [(outer, 1.04 + y, -0.045 + z) for y, z in (*corners, corners[0])]
+        paddles.append(tube(loop, [(0.016, 0.022)] * len(loop), ring=8, up=(1.0, 0.0, 0.0), smooth=2))
+        for z, color in ((-0.04, "yellow_plastic"), (-0.015, "red_plastic")):
+            tips[color].append(cylinder(0.007, (x, 1.138, z), (x, 1.146, z), 8))
+        path = [(side * 0.045, 0.915, 0.022), (side * 0.06, 0.91, 0.07), (side * 0.16, 0.912, 0.06), (side * 0.175, 0.92, 0.0)]
+        path.append((x + side * 0.02, 0.928, -0.03))
+        cords.append(_coiled(path, 0.01, 6))
+    m.add("Holders", merge(*holders), "black_plastic")
+    m.add("Paddles", merge(*paddles), "matte_orange_plastic")
+    for color, buttons in tips.items():
+        m.add(f"PaddleButtons{color.split('_')[0].title()}", merge(*buttons), color)
+    m.add("Cords", merge(*cords), "matte_plastic")
+    # Built square, then narrowed toward the top: the case is a trapezium seen from the front, its paddles leaning in
+    # with its sides. The screen and keys on its face stay square.
+    for part in m.parts[first_unit_part:]:
+        if part.name in ("Bezel", "Screen", "Keys", "Power", "Knob"):
+            continue
+        rise = (part.mesh.vertices[:, 1] - 0.9) / height
+        part.mesh.vertices[:, 0] *= 1.0 - DEFIB_TAPER * rise
     return m
 
 

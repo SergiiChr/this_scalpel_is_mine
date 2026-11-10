@@ -46,6 +46,11 @@ PALETTE: dict[str, Swatch] = {
     "black_plastic": Swatch((0.08, 0.08, 0.09), 0.5),
     "rubber": Swatch((0.12, 0.12, 0.12), 0.9),
     "blue_plastic": Swatch((0.2, 0.35, 0.6), 0.5),
+    # Moulded cart plastic: a flat, satin finish, not the gloss of a casing.
+    "matte_plastic": Swatch((0.9, 0.9, 0.88), 0.9),
+    "matte_blue_plastic": Swatch((0.12, 0.4, 0.75), 0.9),
+    "matte_orange_plastic": Swatch((0.93, 0.4, 0.12), 0.9),
+    "matte_grey_plastic": Swatch((0.74, 0.75, 0.76), 0.9),
     "green_plastic": Swatch((0.2, 0.5, 0.35), 0.5),
     "red_plastic": Swatch((0.7, 0.15, 0.12), 0.5),
     "orange_plastic": Swatch((0.96, 0.34, 0.12), 0.5),

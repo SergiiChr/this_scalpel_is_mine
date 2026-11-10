@@ -72,6 +72,9 @@ public partial class Room : Node3D {
     /// <summary>A small tray's rim top above the instrument tray's surface.</summary>
     private const float SmallTrayRim = 0.016f;
     private const float SmallTrayWall = 0.006f;
+    /// <summary>Top of the defibrillator on its cart, where its paddle parks (DEFIB_ROOF in tools/assetgen/props.py).
+    /// </summary>
+    private const float DefibRoof = 1.16f;
     /// <summary>Solid footprint (width, height, depth) of props you can put things on and can't walk through.</summary>
     private static readonly Dictionary<string, Vector3> StationSolids = new Dictionary<string, Vector3> {
         ["bell"] = new(0.6f, 0.9f, 0.45f),
@@ -79,7 +82,7 @@ public partial class Room : Node3D {
         ["sanitizer"] = new(0.6f, 0.9f, 0.45f),
         ["sink"] = new(0.7f, 0.9f, 0.5f),
         ["delivery_tray"] = new(0.5f, 0.92f, 0.38f),
-        ["defib_cart"] = new(0.55f, 1.06f, 0.45f),
+        ["defib_cart"] = new(0.55f, DefibRoof, 0.45f),
     };
 
     public static readonly IReadOnlyDictionary<string, RoomLayout> Layouts = new Dictionary<string, RoomLayout> {
@@ -282,7 +285,7 @@ public partial class Room : Node3D {
             var basis = new Basis(Vector3.Up, Layout.YawOf("defib_cart"));
             // The broad contact face rests on the unit, with the bridge handle above it.
             var parked = basis * new Basis(Vector3.Right, -Mathf.Pi / 2f);
-            var height = 1.063f + Db.Tool("defibrillator")!.Length;
+            var height = DefibRoof + 0.003f + Db.Tool("defibrillator")!.Length;
             stations.Add(new StationTool("defibrillator",
                 new Transform3D(parked, Layout["defib_cart"] + (basis * new Vector3(0f, height, -0.07f)))));
         }
