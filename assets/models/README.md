@@ -1,13 +1,14 @@
 # Models
 
-Most models are generated from code; run `./build.py assets` to rebuild those models. Supplied models and generator
-inputs are identified in the table below.
-The game loads them through `src/Visuals/ModelSlot.cs` and re-skins materials with the game shader by material name,
-so a replacement `.glb` only needs the same file name, node or bone names and material names.
+Most models are generated from code; run `./build.py assets` to rebuild those models.
+Supplied models and generator inputs are identified in the table below.
+The game loads them through `src/Visuals/ModelSlot.cs` and re-skins materials with the game shader by material name, so
+a replacement `.glb` only needs the same file name, node or bone names and material names.
 `tests/Models/ModelsTest.cs` checks the names the game depends on, and that each model stays within its triangle budget:
-patient 60k (its skeleton, seen only on X-ray films, about 10k of it), surgeon parts 16k (the glove about 8k), organs 7k, targets 5k, tools 6k, props 15k.
-The Blender generator decimates to its budgets (`BUDGETS` in `tools/blender/__main__.py` and `tools/blender/patient.py`);
-Godot adds LODs on import.
+patient 60k (its skeleton, seen only on X-ray films, about 10k of it), surgeon parts 16k (the glove about 8k), organs
+7k, targets 5k, tools 6k, props 15k.
+The Blender generator decimates to its budgets (`BUDGETS` in `tools/blender/__main__.py` and
+`tools/blender/patient.py`); Godot adds LODs on import.
 
 | Folder | Contents | Made by | Animated (bone or node names) |
 |---|---|---|---|

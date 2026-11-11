@@ -1,8 +1,8 @@
 // Layers under the skin, seen through an opened incision.
 // layer 0 = subcutaneous fat (rounded lobules), layer 1 = muscle and fascia (red striated, white sheen),
 // layer 2 = the cut face of the skin in the walls of a cut through it (the patient's skin tone, flecked with tiny vessels).
-// Blood from the fluid map runs down into them. A wound bleeding inside the cut shows a spot on the walls at its depth
-// (UV2.x: meters under the skin).
+// Blood from the fluid map runs down into them, in streaks down a cut's walls. A wound bleeding inside the cut shows a
+// spot on the walls at its depth (UV2.x: meters under the skin), its blood running down the wall from it (bleed_run()).
 shader_type spatial;
 render_mode cull_disabled;
 
@@ -109,8 +109,19 @@ void fragment() {
 	// cell. Wobbled by the tissue's own position, it lies in soft irregular patches instead.
 	vec2 wobble = cut_face ? (vec2(noise3(local_pos * 90.0), noise3(local_pos * 90.0 + 13.0)) - 0.5) * 0.03 : vec2(0.0);
 	float blood = smoothstep(0.05, 0.4, texture(fluid_map, UV + wobble).r);
+	vec4 bleeds = texture(bleed_map, UV);
+	if (cut_face) {
+		// Blood coming over the lip from the skin runs a little way down the wall in streaks, not as one sheet down all
+		// of it: a streak pattern fine across the wall and long down it, full at the lip, gone a centimeter under the
+		// skin. A spot lower down shows clear of it, with its own blood running down from it (below).
+		float streaks = noise3(vec3(local_pos.x * 420.0, local_pos.y * 35.0, local_pos.z * 420.0));
+		float lip = 1.0 - smoothstep(0.002, 0.01, UV2.x + (streaks - 0.5) * 0.006);
+		blood *= mix(1.0, smoothstep(0.38, 0.62, streaks), smoothstep(0.05, 0.3, wall_depth)) * lip;
+		// What a bleed on this wall sheds runs down from its spot.
+		blood = max(blood, bleed_run(bleeds, UV2.x, noise3(local_pos * 600.0)) * 0.9);
+	}
 	c = mix(c, vec3(0.22, 0.005, 0.02), blood * 0.76);
-	float spot = cut_face ? paint_spot(c, bleed_spot(texture(bleed_map, UV), UV2.x)) : 0.0;
+	float spot = cut_face ? paint_spot(c, bleed_spot(bleeds, UV2.x)) : 0.0;
 	ALBEDO = c;
 	// Blood takes the broad sheen off: under the lamp straight above it, that sheen would turn it grey.
 	ROUGHNESS = mix(1.0 - max(wet, spot) * 0.82, 1.0, blood * 0.85);

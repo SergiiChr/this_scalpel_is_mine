@@ -280,8 +280,11 @@ public partial class Room : Node3D {
         var stations = new List<StationTool>();
         if (Layout.Has("defib_cart")) {
             var basis = new Basis(Vector3.Up, Layout.YawOf("defib_cart"));
+            // The broad contact face rests on the unit, with the bridge handle above it.
+            var parked = basis * new Basis(Vector3.Right, -Mathf.Pi / 2f);
+            var height = 1.063f + Db.Tool("defibrillator")!.Length;
             stations.Add(new StationTool("defibrillator",
-                new Transform3D(basis, Layout["defib_cart"] + (basis * new Vector3(0f, 1.1f, 0.12f)))));
+                new Transform3D(parked, Layout["defib_cart"] + (basis * new Vector3(0f, height, -0.07f)))));
         }
         if (Layout.Has("iv")) {
             var basis = new Basis(Vector3.Up, Layout.YawOf("iv"));

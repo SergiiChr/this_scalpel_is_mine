@@ -111,8 +111,6 @@ public partial class SurgicalTool : RigidBody3D {
     public const float DripFluid = 500f;
     /// <summary>Smallest size (meters) a tool counts as across for how hard it is to turn, see Setup().</summary>
     private const float MinTurningSize = 0.04f;
-    /// <summary>How thick a tourniquet's band is where it wraps a limb.</summary>
-    private const float BandThickness = 0.012f;
     /// <summary>Seconds a spreader takes to go down into a cut once set (<see cref="DigTo"/>).</summary>
     public const float DigTime = 0.2f;
 
@@ -492,31 +490,36 @@ public partial class SurgicalTool : RigidBody3D {
         return _ownMaterials;
     }
 
-    /// <summary>Wrapped around a limb (a tourniquet): the tool's own model gives way to a band around it, snug on the
-    /// skin. The tool itself sits on top of the band, where a hand reaches for it to take it off again.</summary>
+    /// <summary>A fabric band wraps the limb while the model's buckle and windlass remain mounted on top.
+    /// The tool itself sits on the band, where a hand reaches for it to take it off again.</summary>
     public void WrapAround(Vector3 center, Vector3 axis, float radius) {
         Unwrap();
         var band = new MeshInstance3D {
             Name = "Band",
-            Mesh = new TorusMesh { InnerRadius = radius, OuterRadius = radius + BandThickness, Rings = 32 },
-            MaterialOverride = Materials.ToonShaded(Def.Color, 0.2f),
+            Mesh = TourniquetVisual.Band(radius, Def.Width),
+            MaterialOverride = Materials.FamilyUnique("cloth", Def.Color, 0.9f),
             TopLevel = true,
         };
         AddChild(band);
         Band = band;
-        // A torus turns about its Y axis.
+        // The ribbon's Y axis runs along the limb.
         var side = axis.Cross(Vector3.Up).Normalized();
         band.GlobalTransform = new Transform3D(new Basis(side, axis, side.Cross(axis)), center);
         var up = (Vector3.Up - axis * axis.Dot(Vector3.Up)).Normalized();
         var basis = side.LengthSquared() > 0.5f ? new Basis(side, up, side.Cross(up)) : GlobalBasis;
-        GlobalTransform = new Transform3D(basis, center + up * (radius + BandThickness));
-        _model.Visible = false;
+        GlobalTransform = new Transform3D(basis, center + up * (radius + TourniquetVisual.Thickness));
+        TourniquetVisual.SetWrapped(_model, Def.Length, true);
     }
 
     public void Unwrap() {
-        Band?.QueueFree();
+        if (Band is { } band) {
+            RemoveChild(band);
+            band.QueueFree();
+        }
         Band = null;
-        _model.Visible = true;
+        if (Def.Action == "tourniquet") {
+            TourniquetVisual.SetWrapped(_model, Def.Length, false);
+        }
     }
 
     public void SetState(ToolState state, int holder, int slot) {

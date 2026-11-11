@@ -3,12 +3,13 @@ namespace Scalpel.Tests.Patients;
 /// <summary>
 /// Every bleed shows where it comes from: a cut bleeding however little puddles on the skin at itself, with no spot that
 /// the cut would split across its lips, a puncture shows a spot on the skin in its puddle, a vessel under skin that
-/// isn't cut bruises it instead, and an opened incision and every vessel in it show a spot in the middle of the wall of
-/// the deepest layer they bleed from, never on the skin over it, however many there are. The spot grows with how fast
-/// it bleeds, the slightest bleed still shows, it's gone once the bleeding stops, and pulling the skin takes it along
-/// instead of leaving it hanging in the air. The blood pooled in the cavity hides it, with nothing standing on the pool.
+/// isn't cut bruises it instead, an opened incision shows a spot at the top of the fat's wall, just under the skin, and
+/// every vessel in it a spot in the middle of the wall of the layer it bleeds from, never on the skin over it, however
+/// many there are. The spot grows with how fast it bleeds, the slightest bleed still shows, it's gone once the bleeding
+/// stops, and pulling the skin takes it along instead of leaving it hanging in the air. The blood pooled in the cavity
+/// over a vessel moves its spot up to the pool's surface, its top showing above it, with nothing standing on the pool.
 /// With key frames review the puddles and the puncture's spot, the vein-like spots within the incision's layer walls,
-/// the spot riding the pulled edge and the plain pool over the vessels.
+/// each with its blood running down the wall from it, the spot riding the pulled edge and the pool over the vessels.
 /// </summary>
 [TestSuite, RequireGodotRuntime]
 [TestCategory("smoke"), TestCategory("slow"), TestCategory("liquids"), TestCategory("visual_confirmation"), TestCategory("frame_budget")]
@@ -51,8 +52,8 @@ public class BleedSourcesTest {
         await Frames.Seconds(1f);
         AssertString(Spot(body, incision.BleedPoint)).OverrideFailureMessage("the opened incision shows a spot on its walls").IsEqual("inside");
         var shown = SpotCenter(body, incision.BleedPoint);
-        AssertFloat(shown).OverrideFailureMessage($"on the deepest layer it's cut through, not the skin's thin edge ({shown * 1000f:0.0} mm deep)")
-            .IsGreater(PatientBody.SkinThickness + body.FatThickness);
+        AssertFloat(shown).OverrideFailureMessage($"at the top of the fat's wall, just under the skin's thin edge ({shown * 1000f:0.0} mm deep)")
+            .IsBetween(PatientBody.SkinThickness, PatientBody.SkinThickness + body.FatThickness * 0.5f);
         // Off the cut's own bleed point and its spot.
         var middle = at + new Vector2(0.03f, 0f);
         AssertBool(body.Tissue.IsOpen(middle)).OverrideFailureMessage("the vessel lies in the opening").IsTrue();
@@ -75,7 +76,7 @@ public class BleedSourcesTest {
         foreach (var layer in (int[])[1, 2]) {
             WallsKeepTheirSpotsInPlace(body, layer, at, 0.1f);
         }
-        await CloseUp(session, "vessels_close", "close on the incision: round vein-like spots within the walls of the layers they bleed from, none running off a layer, the right one biggest, the left one smallest but clear, nothing on the skin around the cut", at);
+        await CloseUp(session, "vessels_close", "close on the incision: round vein-like spots within the walls of the layers they bleed from, none running off a layer, the right one biggest, the left one smallest but clear, each with a narrow run of blood down the wall under it and none above it, nothing on the skin around the cut", at);
 
         SurgeryState.WoundIsClamped(weak);
         await Frames.Seconds(0.5f);
@@ -93,7 +94,26 @@ public class BleedSourcesTest {
 
         var covered = await Frames.Until(() => UnderPool(body, middle), 180f);
         AssertBool(covered).OverrideFailureMessage($"the cavity pool rises over the vessel ({patient.CavityBloodMl:0} ml)").IsTrue();
-        await driver.Capture("vessel_under_pool", "the vessels covered by the pool: its surface plain dark blood, nothing standing on it");
+        await Frames.Seconds(0.5f);
+        var surface = body.SurfaceHeight(middle) - body.CavityPoolHeight;
+        var (center, radius) = (SpotCenter(body, middle), SpotRadius(body, middle));
+        AssertFloat(center - radius).OverrideFailureMessage(
+                $"its spot on the wall shows its top above the pool: middle {center * 1000f:0.0} mm deep, radius "
+                + $"{radius * 1000f:0.0} mm, surface {surface * 1000f:0.0} mm deep").IsLess(surface);
+        // Filled on over where the spot sits on its wall, the pool takes it up the wall with it, its top still showing.
+        var wallMiddle = center;
+        for (var ml = patient.CavityBloodMl; ml < 3000f && body.SurfaceHeight(middle) - body.CavityPoolHeight > wallMiddle - radius; ml += 25f) {
+            SurgeryState.CavityHoldsBlood(patient, ml);
+            await Frames.NextPhysics();
+        }
+        await Frames.Seconds(0.5f);
+        surface = body.SurfaceHeight(middle) - body.CavityPoolHeight;
+        (center, radius) = (SpotCenter(body, middle), SpotRadius(body, middle));
+        AssertBool(surface < wallMiddle && center - surface > 0f && center - surface < radius).OverrideFailureMessage(
+                $"risen over where it sat ({wallMiddle * 1000f:0.0} mm deep), the pool takes the spot up the wall with it, its top "
+                + $"showing: middle {center * 1000f:0.0} mm deep, radius {radius * 1000f:0.0} mm, surface {surface * 1000f:0.0} mm deep")
+            .IsTrue();
+        await driver.Capture("vessel_under_pool", "the vessels covered by the pool: its surface plain dark blood, nothing standing on it, their spots' tops just showing on the walls above it");
 
         // Many vessels at once along the incision: each shows its spot inside where the incision gapes, or lies right by a
         // faster one's in another layer, and puddles on the skin where it's shut.
@@ -155,6 +175,39 @@ public class BleedSourcesTest {
         await session.Finish(BudgetOverride);
     }
 
+    /// <summary>
+    /// A skin cut's lip lifted so its wall stands up: the cut shows where it bleeds from at the top of the fat's wall,
+    /// just under the skin, and its blood runs down the wall from there rather than covering it. With key frames review
+    /// the wall face on: the spot clear to see, one narrow run of blood down from it, widening a little, none above it.
+    /// </summary>
+    [TestCase(Timeout = Limits.Slow)]
+    public async Task ALiftedLipShowsWhereItBleedsFrom() {
+        var session = await ToolSession.Start("appendectomy", "bleed_sources_lifted_lip");
+        var driver = session.Driver;
+        var patient = driver.Patient;
+        var body = driver.Body;
+        var at = new Vector2(0.5f, 0.5f);
+        var cut = SurgeryState.SkinIsCut(patient, at - new Vector2(0.12f, 0f), at + new Vector2(0.12f, 0f), 0.6f);
+        await Frames.Seconds(1f);
+        // The far lip lifted and drawn back: its wall stands up facing across the cut.
+        var lip = at + new Vector2(0f, body.MetersToUv(0.004f));
+        var k = SurgeryState.TissueIsPulled(patient, lip, new Vector3(0f, 0.012f, 0.008f));
+        var before = body.LayerPoint(0, k);
+        await Frames.Seconds(4f);
+        var raised = body.LayerPoint(0, k).Y - before.Y;
+        AssertFloat(raised).OverrideFailureMessage($"the lip is lifted ({raised * 1000f:0.0} mm)").IsGreater(0.008f);
+        AssertString(Spot(body, cut.BleedPoint)).OverrideFailureMessage("the lifted cut still shows where it bleeds from on its walls")
+            .IsEqual("inside");
+        if (session.Shots is { } shots) {
+            var look = driver.SitePoint(cut.BleedPoint) + Vector3.Up * 0.004f;
+            var across = (driver.SitePoint(at - new Vector2(0f, 0.1f)) - driver.SitePoint(at)).Slide(Vector3.Up);
+            await driver.Unbudgeted(() => shots.CaptureOblique("lifted_lip", "the lifted lip's wall face on: the spot "
+                + "where the cut bleeds clear to see just under the skin, one narrow run of blood down the wall from it, "
+                + "widening a little, none above it, blood from the skin only near the lip", look, across, 0.07f, 20f));
+        }
+        await session.Finish(BudgetOverride);
+    }
+
     /// <summary>How far (meters) along a straight cut a point of a wall's lip may lie from where its neighbours along
     /// the lip put its uv.</summary>
     private const float LipSlide = 0.0001f;
@@ -213,6 +266,11 @@ public class BleedSourcesTest {
     private static float SpotCenter(PatientBody body, Vector2 uv) =>
         body.WoundMap.Value(WoundMap.Layer.Bleeds, WoundMap.SpotDepth, uv)
         / Mathf.Max(body.WoundMap.Value(WoundMap.Layer.Bleeds, WoundMap.Spot, uv), 0.001f) * WoundMap.MaxSpotDepth;
+
+    /// <summary>The radius (meters) of the bleed spot inside a cut at uv.</summary>
+    private static float SpotRadius(PatientBody body, Vector2 uv) =>
+        body.WoundMap.Value(WoundMap.Layer.Bleeds, WoundMap.SpotRadius, uv)
+        / Mathf.Max(body.WoundMap.Value(WoundMap.Layer.Bleeds, WoundMap.Spot, uv), 0.001f) * WoundMap.MaxSpotRadius;
 
     private static float Blood(PatientBody body, Vector2 uv) => body.WoundMap.Value(WoundMap.Layer.Fluids, WoundMap.Blood, uv);
 

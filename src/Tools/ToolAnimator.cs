@@ -2,8 +2,8 @@ namespace Scalpel.Tools;
 
 /// <summary>
 /// Moves a tool model's named parts from the holding hand's state, which every peer has. Jaws close while squeezed or
-/// holding tissue, a syringe plunger sits behind its liquid and air, triggers squeeze, saw blades oscillate, flames and
-/// glows light up in use. Part names come from tools/assetgen/instruments.py.
+/// holding tissue, a syringe plunger sits behind its liquid and air, triggers squeeze, saw blades reciprocate or rotate,
+/// flames and glows light up in use. Part names come from tools/assetgen/instruments.py.
 /// A film bag (the IV bag, tools/assetgen/iv_bag.py) falls flat as it empties and spreads out lying down, through its
 /// EmptyBag and RestingFlat blend shapes, and sways on its rig behind the hand as it's carried.
 /// </summary>
@@ -37,6 +37,9 @@ public sealed class ToolAnimator {
     /// <summary>Static cutting tools also have a part named Blade; only saws move it independently of the handle.
     /// </summary>
     private bool _saw;
+    /// <summary>A circular saw declares a fixed Spindle; its Blade pivot is the axle center, rotating about X.</summary>
+    private bool _rotarySaw;
+    private const float RotarySpeed = 45f;
     /// <summary>How far the plunger moves from empty to full: the length of the full "Level" part.</summary>
     private float _plungerTravel;
     private float _fill;
@@ -77,6 +80,7 @@ public sealed class ToolAnimator {
 
     public void Setup(Node3D model, string action) {
         _saw = action == "saw";
+        _rotarySaw = _saw && model.FindChild("Spindle", true, false) is Node3D;
         _model = model;
         _film = [.. model.FindChildren("*", "MeshInstance3D", true, false).Cast<MeshInstance3D>()
             .Where(mesh => mesh.FindBlendShapeByName(EmptyBag) >= 0)];
@@ -184,7 +188,9 @@ public sealed class ToolAnimator {
         Pose("JawB", new Basis(Vector3.Up, -jaw), Vector3.Zero);
         Pose("Plunger", Basis.Identity, new Vector3(0, 0, _plungerTravel * _fill));
         Pose("Trigger", new Basis(Vector3.Right, -0.35f * _squeeze), Vector3.Zero);
-        Pose("Blade", Basis.Identity, new Vector3(active && _saw ? Mathf.Sin(_time * 70f) * 0.004f : 0f, 0, 0));
+        var bladeRotation = active && _rotarySaw ? new Basis(Vector3.Right, _time * RotarySpeed) : Basis.Identity;
+        var bladeTravel = active && _saw && !_rotarySaw ? Mathf.Sin(_time * 70f) * 0.004f : 0f;
+        Pose("Blade", bladeRotation, new Vector3(bladeTravel, 0f, 0f));
         var flicker = 1f + Mathf.Sin(_time * 31f) * 0.15f + Mathf.Sin(_time * 53f) * 0.1f;
         foreach (var glow in GlowParts) {
             if (_parts.TryGetValue(glow, out var part)) {

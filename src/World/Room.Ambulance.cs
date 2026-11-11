@@ -46,7 +46,7 @@ public partial class Room {
             "sanitizer" => ["Cabinet", "Doors", "Handles"],
             "defib_cart" => ["Body", "Handles", "Wheels"],
             "iv" => ["Base"],
-            "manual" => ["Board", "Brackets", "Books"],
+            "manual" => ["Board", "Brackets", "Books", "Binders", "Pages", "Holes"],
             _ => [],
         };
         foreach (var part in ModelSlot.Parts(root, hidden).Values) {

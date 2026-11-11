@@ -38,7 +38,7 @@ public class TourniquetTest {
         AssertBool(problems.Count == 0).OverrideFailureMessage(string.Join("\n", problems)).IsTrue();
         AssertBool(tourniquet.State == ToolState.Standing && driver.Me.HeldTool(driver.Me.Active) is null)
             .OverrideFailureMessage("the hand lets go of the tourniquet once it's on").IsTrue();
-        await session.CaptureAt("on", "the tourniquet's band around the forearm above the cut, snug on the skin", spot,
+        await session.CaptureAt("on", "a broad dark fabric band snug around the forearm above the cut, with its buckle and crosswise windlass visible on top", spot,
             ViewDistance);
 
         await Frames.Seconds(1f);

@@ -64,8 +64,9 @@ public readonly record struct CutPool(Vector2 Uv, float Floor, float Fill) {
 /// in the fluid map. Where the film runs off the body it drips: droplets fall to the table or the floor and collect
 /// into pools that grow. Strong bleeds also spurt droplets into the air.
 /// Every bleed shows its source as a spot a little darker than blood: on the skin where it bleeds onto it, on the cut's
-/// wall at its depth where it bleeds inside the opening (never on the skin over it), hidden once the cavity pool covers
-/// it. A needle's puncture of the skin shows the same spot as a bleed onto it.
+/// wall at its depth where it bleeds inside the opening (never on the skin over it), its blood running down the wall
+/// from it. Blood pooled over it in the opening moves it up to the pool's surface, so its top shows, until the pool
+/// brims over the lips. A needle's puncture of the skin shows the same spot as a bleed onto it.
 /// Spots are painted by uv, so they ride the tissue wherever it's pulled.
 /// Bleeding under skin that isn't cut open spreads a bruise over it.
 /// Purely visual and local: each peer runs its own, so the stains differ a little between players, which is fine.
@@ -638,7 +639,7 @@ public partial class BloodFlow : Node3D {
         margin += new Vector2(gap / body.SiteSize.X, gap / body.SiteSize.Y);
         var bounds = new Rect2(low - margin, high - low + margin * 2f).Intersection(new Rect2(Vector2.Zero, Vector2.One));
         if (!bounds.HasArea()) { return; }
-        var depth = Mathf.Lerp(floor - CutPoolLift, Mathf.Max(floor * CutPoolBrim, CutPoolFull), Mathf.Clamp(fill, 0f, 1f));
+        var depth = CutPoolDepth(floor, fill);
         var height = body.SurfaceHeight(uv) - depth;
         var inset = gap * 0.2f * (1f - Mathf.Sqrt(Mathf.Clamp(fill, 0f, 1f)));
         var cavity = floor > PatientBody.SkinThickness + body.FatThickness + 0.005f;
@@ -688,15 +689,22 @@ public partial class BloodFlow : Node3D {
             if (depth > 0f ? !body.Tissue.IsOpen(uv, TissueDepth.Skin) : !point || _insideUvs.Contains(uv)) {
                 continue;
             }
-            // Inside, it sits in the middle of the wall of the layer it bleeds from, no bigger than that wall is high, so
-            // it never runs off it.
+            // Inside, it sits on the wall of the layer it bleeds from, no bigger than that wall is high, so it never runs
+            // off it.
             var (top, thickness) = LayerAt(body, uv, depth);
             var radius = Mathf.Min(SpotMin + Mathf.Sqrt(rate) * SpotGrowth, WoundMap.MaxSpotRadius);
             if (depth > 0f) {
                 radius = Mathf.Min(radius, thickness * 0.5f);
             }
             var size = body.MetersToUv(radius);
-            var center = depth > 0f ? top + thickness * 0.5f : 0f;
+            // A cut's own edge bleeds from just under the skin: at the top of the fat's wall, where a lip lifted with the
+            // skin shows it. A vessel deeper down, in the middle of its layer's wall.
+            var center = depth <= 0f ? 0f : depth <= PatientBody.SkinThickness && top > 0f ? top + radius : top + thickness * 0.5f;
+            // Blood pooled in the opening over it: up the wall to the pool's surface, so its top still shows above it.
+            // Not past the skin, though: a pool brimming over the lips hides it.
+            if (depth > 0f && PoolSurfaceDepth(body, uv) is var surface && surface > 0f) {
+                center = Mathf.Min(center, Mathf.Max(surface + radius * PoolPeek, radius));
+            }
             if (Overlaps(uv, size, center)) {
                 continue;
             }
@@ -740,6 +748,33 @@ public partial class BloodFlow : Node3D {
         _spots.Add((uv, size, 0f));
     }
 
+    /// <summary>How far down (meters, from the spot's middle) a spot covered by a pool lies under its surface: its top
+    /// shows above it.</summary>
+    private const float PoolPeek = 0.2f;
+
+    /// <summary>How deep (meters) under the skin at <paramref name="uv"/> the surface of the blood pooled in the opening
+    /// there lies: the cavity's pool where the cut reaches into the cavity, or the pool held in the cut it's in.
+    /// Infinitely deep without either.</summary>
+    private float PoolSurfaceDepth(PatientBody body, Vector2 uv) {
+        var skin = body.SurfaceHeight(uv);
+        var reach = body.MetersToUv(body.Tissue.OpenReach * 2f);
+        var surface = body.Tissue.DeepestCut(uv, reach) == TissueDepth.Muscle ? skin - body.CavityPoolHeight : float.PositiveInfinity;
+        // A cut's pool is keyed by its wound's bleed point and fills the whole cut at one height.
+        if (body.GetParent<Patient>().NearestWound(uv, reach, false) is { } wound) {
+            foreach (var pool in Pools) {
+                if (pool.Uv == wound.BleedPoint) {
+                    surface = Mathf.Min(surface, skin - body.SurfaceHeight(pool.Uv) + CutPoolDepth(pool.Floor, pool.Fill));
+                }
+            }
+        }
+        return surface;
+    }
+
+    /// <summary>How deep (meters) under the skin at its bleed point a cut's pool stands, <paramref name="fill"/> of
+    /// the way up from its <paramref name="floor"/>.</summary>
+    private static float CutPoolDepth(float floor, float fill) =>
+        Mathf.Lerp(floor - CutPoolLift, Mathf.Max(floor * CutPoolBrim, CutPoolFull), Mathf.Clamp(fill, 0f, 1f));
+
     /// <summary>Whether a spot of <paramref name="size"/> at <paramref name="uv"/> would overlap one already painted
     /// at another depth.</summary>
     private bool Overlaps(Vector2 uv, float size, float center) {
@@ -754,8 +789,8 @@ public partial class BloodFlow : Node3D {
     /// <summary>
     /// The top (meters under the skin) and thickness of the layer whose wall a bleed at <paramref name="uv"/>,
     /// <paramref name="depth"/> deep, shows on: the one it lies in, the muscle for anything under it, but no deeper than
-    /// the cut there goes. A cut bleeding from its own edges (as deep as the skin) shows on the deepest layer it's cut
-    /// through.
+    /// the cut there goes. A cut bleeding from its own edges (as deep as the skin) shows on the fat under the skin, or
+    /// the skin's own cut face where only the skin is cut.
     /// </summary>
     private static (float Top, float Thickness) LayerAt(PatientBody body, Vector2 uv, float depth) {
         var cut = body.Tissue.DeepestCut(uv, body.MetersToUv(body.Tissue.OpenReach * 2f)) switch {
@@ -763,8 +798,8 @@ public partial class BloodFlow : Node3D {
             TissueDepth.Fat => 1,
             _ => 0,
         };
-        // As deep as the skin is a cut's own edge: any layer the cut reaches.
-        var lies = depth <= PatientBody.SkinThickness ? 2 : depth <= PatientBody.SkinThickness + body.FatThickness ? 1 : 2;
+        // A cut's own edge (as deep as the skin) shows on the fat's wall, a vessel on its own layer's.
+        var lies = depth <= PatientBody.SkinThickness + body.FatThickness ? 1 : 2;
         return Math.Min(lies, cut) switch {
             0 => (0f, PatientBody.SkinThickness),
             1 => (PatientBody.SkinThickness, body.FatThickness),

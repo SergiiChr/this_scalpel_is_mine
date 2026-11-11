@@ -25,6 +25,8 @@ public class IvLineTest {
     private const float WalkOff = 1.5f;
     /// <summary>How close to the table's middle (meters across it) a surgeon stands clear of its edge.</summary>
     private const float TableClear = 0.58f;
+    /// <summary>How far out past <see cref="TableClear"/> (meters) the surgeon steps into the slack.</summary>
+    private const float SlackReach = 0.05f;
 
     [TestCase]
     public async Task ConnectedCatheterGoesInAndWalkingOffWithTheLineCaughtRipsItOut() {
@@ -96,7 +98,13 @@ public class IvLineTest {
             var low = line.Points.Where(point => point.Y < 1f && point.Z > TableClear).ToList();
             AssertBool(low.Count > 0)
                 .OverrideFailureMessage($"the tubing hangs out beside the table: {string.Join(" ", line.Points)}").IsTrue();
-            var spot = new Vector3(low.MinBy(point => point.Z).X, 0f, TableClear);
+            // Where the hanging tubing passes a little out from the table's edge, read off between its points so that
+            // tiny differences in how it hangs don't move the spot from one point to the next.
+            var across = line.Points.Zip(line.Points.Skip(1))
+                .First(pair => pair.First.Y < 1f && pair.First.Z > TableClear + SlackReach && pair.Second.Z <= TableClear + SlackReach);
+            var spot = new Vector3(
+                across.First.Lerp(across.Second, (across.First.Z - TableClear - SlackReach) / (across.First.Z - across.Second.Z)).X,
+                0f, TableClear);
             SurgeryState.SurgeonStandsAt(driver.Me, spot, 0f);
             await Frames.Physics(10);
             await driver.PlayerHoldsWalkKey(InputActions.MoveBack, Brush, () => { });

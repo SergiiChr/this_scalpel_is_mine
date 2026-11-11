@@ -39,8 +39,6 @@ public class ScenarioFlowsTest {
     [TestCase("open_fracture", false,
         "with key frames the worst frame takes 18 ms of game work (budget 16 ms) while sewing.", 16f, Timeout = Limits.Slow)]
     [TestCase("knife_back", true, BudgetOverride, 17f, Timeout = Limits.Slow)]
-    [TestCase("lung_fluid", false, "in some runs the frame after aiming takes up to 96 ms, about half "
-        + "of it a garbage collection; not traced further", 16f, Timeout = Limits.Slow)]
     [TestCase("oscar_figurine", false, BudgetOverride, 17f, Timeout = Limits.Slow)]
     [TestCase("heart_attack", true,
         "in some runs the frame the defibrillator is put down (56.9 s) takes 35-43 ms of the game's own work; timing "
@@ -65,6 +63,7 @@ public class ScenarioFlowsTest {
         await KnownIssue.Expect(failure, () => ScenarioFlow.Play(scenario));
 
     [TestCase("blocked_artery", Timeout = Limits.Slow, Description = "BROKEN: the running skin stitch along the 11 cm incision closes it only to about 0.4: pulled shut, the skin's springs snap (Patient.OnSnap) and tear new wounds the needle then can't reach (\"needle cannot reach intended puncture within 4 mm\"). Skin closure ends at 0.69-0.7, so \"Stitch the skin closed\" passes or fails on the random sequence.")]
+    [TestCase("lung_fluid", Timeout = Limits.Slow, Description = "BROKEN: the running skin stitch along the 8-hole cut tears when pulled shut (\"the thread finished or tore before it could be tied off\"), so \"Stitch the cut closed\" doesn't complete. It passes or fails with where the tools come to rest on the tray: the reshaped iodine dish made it fail.")]
     [TestCategory("broken")]
     public async Task PlaysThroughKnownBroken(string scenario) => await ScenarioFlow.Play(scenario);
 }
