@@ -111,6 +111,8 @@ public partial class Screenshot : Node {
         camera.Fov = big ? 75f : 40f;
         // The prop on its own: the patient would cover the table.
         surgery.Patient.Visible = false;
+        // A prop hung under the ceiling (the surgical lamp) is shot from below, as the room shows it.
+        var under = center.Y > 1.8f ? -1f : 1f;
         // The prop's front is its +Z, the way Room turns it to face into the room.
         (string Name, Vector3 From, float Distance)[] views = [
             ("front", new Vector3(0f, 0.5f, 1f), size * 1.6f),
@@ -120,7 +122,7 @@ public partial class Screenshot : Node {
             ("close", new Vector3(0.35f, 0.6f, 1f), size * 0.8f),
         ];
         foreach (var (name, from, distance) in views) {
-            camera.GlobalPosition = center + (root.GlobalBasis * from.Normalized() * distance);
+            camera.GlobalPosition = center + (root.GlobalBasis * new Vector3(from.X, from.Y * under, from.Z).Normalized() * distance);
             camera.LookAt(center, Vector3.Up);
             await Shot($"{key}_{name}");
         }

@@ -64,6 +64,7 @@ public static class ModelSlot {
                     "glass" => Materials.Glass(),
                     "frosted_plastic" => Materials.Frosted(),
                     "flame" => Materials.Glow(new Color(1f, 0.62f, 0.2f)),
+                    "led" => Materials.Glow(new Color(1f, 0.97f, 0.9f)),
                     // Printed artwork (the IV bag's label) stays as imported: its alpha cutout shows the film between
                     // the letters, which the cel shader would fill in.
                     "print" => null,
