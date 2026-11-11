@@ -9,6 +9,8 @@ The skeleton (tools/blender/skeleton.py) is one rigid part per bone, named Skele
 from __future__ import annotations
 
 import bpy
+import numpy as np
+from numpy.typing import NDArray
 
 from . import face, scene, skeleton
 from .hand import smooth_digit
@@ -138,16 +140,44 @@ def _gown(body: bpy.types.Object) -> bpy.types.Object:
     return scene.finish(scene.bake(gown), scene.material("gown", GOWN, roughness=0.9))
 
 
+# The hairline as the lowest head-axis x the hair reaches, by angle around the head from the face (0) to the back
+# of the head (180 degrees). The front edge sits 6.5 cm above the brow (the male average), recedes a little at the
+# temples, drops at the temporal points into sideburns that end level with the tragus, and the nape ends level with
+# the earlobes.
+HAIRLINE_ANGLE = (0.0, 22.0, 36.0, 48.0, 58.0, 67.0, 71.0, 74.0, 80.0, 90.0, 130.0, 180.0)
+HAIRLINE_X = (0.755, 0.756, 0.763, 0.748, 0.728, 0.714, 0.696, 0.666, 0.662, 0.64, 0.632, 0.626)
+HEAD_AXIS_Y = -0.005
+# Hair stands about 9 mm on top, a crew cut, and 4 mm on the clipped sides and back, thinning to nothing over the
+# last centimetre before the hairline so its edge lies flat on the skin.
+HAIR_TOP, HAIR_SIDES, HAIR_FADE = 0.009, 0.004, 0.01
+# The hair leaves a gap around each ear (ear center, half sizes along x and y).
+EAR_GAP: tuple[tuple[float, float], tuple[float, float]] = ((0.671, -0.004), (0.038, 0.027))
+
+
+def _above_hairline(p: NDArray[np.float64]) -> NDArray[np.float64]:
+    """How far each point lies inside the hair, in metres: negative on bare skin."""
+    angle = np.degrees(np.arctan2(np.abs(p[:, 2]), p[:, 1] - HEAD_AXIS_Y))
+    edge = p[:, 0] - np.interp(angle, HAIRLINE_ANGLE, HAIRLINE_X)
+    (ex, ey), (sx, sy) = EAR_GAP
+    ear = (np.hypot((p[:, 0] - ex) / sx, (p[:, 1] - ey) / sy) - 1.0) * sy
+    # A few millimetres of waver, so the hairline isn't drawn with a ruler.
+    edge += 0.0008 * np.sin(p[:, 2] * 150.0 + p[:, 1] * 60.0) + 0.0004 * np.sin(p[:, 1] * 230.0 - p[:, 2] * 310.0)
+    return np.where(np.abs(p[:, 2]) > 0.045, np.minimum(edge, ear), edge)
+
+
+def _hair_depth(p: NDArray[np.float64]) -> NDArray[np.float64]:
+    top = np.clip((p[:, 0] - 0.72) / 0.05, 0.0, 1.0)
+    fade = np.clip(_above_hairline(p) / HAIR_FADE, 0.0, 1.0)
+    return (HAIR_SIDES + (HAIR_TOP - HAIR_SIDES) * top * top) * (0.04 + 0.96 * fade * fade * (3.0 - 2.0 * fade))
+
+
 def _hair(body: bpy.types.Object) -> bpy.types.Object:
-    """Short hair grown out of the scalp: the crown and back of the head, stopping at the hairline and around the ears."""
+    """Short hair grown out of the scalp: one surface lifted off the skin, thick on top and fading out at the hairline."""
     hair = bpy.data.objects.new("Hair", body.data.copy())
     scene.link(hair)
-    # One tilted plane makes a clean hairline: high on the forehead, down to the nape at the back, above the ears.
-    scene.bisect(hair, (0.745, 0.03, 0.0), (1.0, -0.6, 0.0))
-    mod = hair.modifiers.new("Thickness", "SOLIDIFY")
-    mod.thickness = 0.004
-    mod.offset = 1.0
-    hair = scene.displace(scene.bake(hair), 0.0012, 0.003, seed=17)
+    scene.cut_below(hair, 0, 0.6)
+    scene.keep(hair, _above_hairline)
+    hair = scene.displace(scene.inflate(hair, _hair_depth), 0.0009, 0.003, detail=3, seed=17)
     return scene.finish(hair, scene.material("hair", HAIR, roughness=0.8))
 
 
@@ -156,7 +186,7 @@ def _hair(body: bpy.types.Object) -> bpy.types.Object:
 BUDGETS = {
     "Body": 34000,
     "Gown": 5000,
-    "Hair": 4000,
+    "Hair": 3000,
     "Brows": 800,
     "EyeL": 1200,
     "EyeR": 1200,
@@ -186,9 +216,10 @@ def build() -> bpy.types.Object:
     for canal in face.ear_canals():
         body = scene.subtract(body, canal, fast=True)
     body = face.carve_mouth(body)
+    # The hair grows from the dense scalp, so its hairline stays smooth.
+    hair = _hair(body)
     body = scene.fit(body, BUDGETS["Body"])
     gown = _gown(body)
-    hair = _hair(body)
     brows = face.eyebrows(body)
     eye_l, eye_r, lids = face.eyes()
     upper_teeth, lower_teeth, tongue = face.teeth_and_tongue()
