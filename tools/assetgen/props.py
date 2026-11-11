@@ -406,13 +406,41 @@ def _gloves() -> Model:
 
 
 def _sanitizer() -> Model:
+    """Instrument disinfection station on the steel cabinet, after CIDEX soaking trays: a long frosted tub of blue
+    disinfectant with a perforated steel basket's lift handles over the liquid and the lid hinged open behind, and a
+    pump bottle of hand rub beside it. The ambulance hides the cabinet and keeps the tub and bottle on its worktop."""
     m = Model("props", "sanitizer")
     _cabinet(m)
-    basin = lathe([(0.0, 0.0), (0.15, 0.0), (0.17, 0.12), (0.16, 0.12), (0.14, 0.01), (0.0, 0.01)], 32)
-    m.add("Basin", moved(basin, (0.0, 0.9, 0.0)), "steel")
-    m.add("Alcohol", cylinder(0.145, (0.0, 0.91, 0.0), (0.0, 0.98, 0.0), 32), "clear_plastic")
-    bottle = lathe([(0.0, 0.0), (0.035, 0.0), (0.035, 0.16), (0.012, 0.19), (0.012, 0.22), (0.0, 0.22)], 16)
-    m.add("Bottle", moved(bottle, (0.2, 0.9, 0.1)), "blue_plastic")
+    top, length, width, height, wall = 0.9, 0.4, 0.22, 0.12, 0.008
+    x, z = -0.08, 0.0
+    walls = [
+        moved(trimesh.creation.box((length, wall, width)), (x, top + wall / 2, z)),
+        *(moved(trimesh.creation.box((length, height, wall)), (x, top + height / 2, z + s * (width - wall) / 2)) for s in (-1, 1)),
+        *(moved(trimesh.creation.box((wall, height, width)), (x + s * (length - wall) / 2, top + height / 2, z)) for s in (-1, 1)),
+    ]
+    # The lid stands open on its hinge along the tub's back edge, leaning a little back.
+    lid = rotated(moved(trimesh.creation.box((length + 0.01, 0.012, width + 0.01)), (x, 0.0, (width + 0.01) / 2)), -1.75, (1.0, 0.0, 0.0))
+    m.add("Tub", merge(*walls, moved(lid, (0.0, top + height, z - width / 2))), "frosted_plastic")
+    # The liquid is a solid block up to its surface, so it shows blue through the frosted walls.
+    m.add("Disinfectant", moved(trimesh.creation.box((length - 2 * wall, 0.082, width - 2 * wall)), (x, top + wall + 0.041, z)), "drug")
+    # The basket under the surface shows only its rim and the wire bail at each end, up for lifting.
+    bail = [(0.0, 0.0, -0.05), (0.0, 0.065, -0.04), (0.0, 0.065, 0.04), (0.0, 0.0, 0.05)]
+    bails = [
+        tube([(x + s * (length / 2 - 0.03), top + 0.08 + y, z + dz) for _, y, dz in bail], [(0.004, 0.004)] * 4, ring=6, up=(1.0, 0.0, 0.0), smooth=2)
+        for s in (-1, 1)
+    ]
+    m.add("Basket", merge(*bails), "steel")
+    # The pump bottle: a white body with a blue label band, and the pump's collar, stem and spout on top.
+    bottle = lathe([(0.0, 0.0), (0.035, 0.0), (0.036, 0.004), (0.036, 0.15), (0.03, 0.17), (0.014, 0.18), (0.0, 0.18)], 14)
+    m.add("Bottle", moved(bottle, (0.2, top, 0.08)), "plastic")
+    m.add("Label", cylinder(0.038, (0.2, top + 0.05, 0.08), (0.2, top + 0.11, 0.08), 14), "blue_plastic")
+    pump = merge(
+        cylinder(0.016, (0.2, top + 0.175, 0.08), (0.2, top + 0.2, 0.08), 12),
+        cylinder(0.005, (0.2, top + 0.2, 0.08), (0.2, top + 0.23, 0.08), 8),
+        rounded_slab((0.024, 0.014, 0.024), 0.008, 0.003, (0.2, top + 0.237, 0.08)),
+        cylinder(0.004, (0.2, top + 0.24, 0.08), (0.2, top + 0.236, 0.035), 8),
+    )
+    m.add("Pump", pump, "black_plastic")
     return m
 
 
