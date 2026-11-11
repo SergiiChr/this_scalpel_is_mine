@@ -544,111 +544,73 @@ def _beam(a: tuple[float, float, float], b: tuple[float, float, float], width: f
 
 
 def _xray() -> Model:
-    """Mobile X-ray unit, industrial: an open H frame of square steel on swivel casters, a square column at its front left
-    braced by a gas strut, and a level steel arm from a carriage on the column to the box-shaped tube head, which hangs
-    from a yoke. The control panel is on the head's back, toward the pusher; the push bar and the cassette cabinet are at
-    the back.
+    """Mobile X-ray unit, after the Siemens Mobilett and Philips MobileDiagnost: a white housing on two big rear wheels and
+    front casters, low in front and a tall generator cabinet at the back with the detector bin and the push bar on top.
+    A square column at the front left carries a level arm on a carriage, and from the arm's end hangs the round tube
+    housing over the collimator. The control panel is on the collimator's back, toward the pusher.
     """
     m = Model("props", "xray")
-    rails = [_block((0.06, 0.05, 0.78), (x, 0.125, 0.02)) for x in (-0.24, 0.24)]
-    cross = [_block((0.42, 0.045, 0.05), (0.0, 0.125, z)) for z in (-0.03, 0.3)]
-    # The column's foot: a plate on the front cross bar, and gussets either side.
-    foot = _block((0.12, 0.012, 0.12), (XRAY_COLUMN[0], 0.155, XRAY_COLUMN[1]))
-    gussets = [_block((0.008, 0.12, 0.1), (XRAY_COLUMN[0] + s * 0.045, 0.21, XRAY_COLUMN[1])) for s in (-1, 1)]
-    frame = [*rails, *cross, foot, *gussets]
-    corners = [(x, z) for x in (-0.24, 0.24) for z in (-0.33, 0.37)]
-    forks = [part for x, z in corners for part in _caster(x, z)]
-    wheels = [_wheel(x, z) for x, z in corners]
-    m.add("Wheels", merge(*wheels), "rubber")
     cx, cz = XRAY_COLUMN
-    # Tall enough that the carriage at its highest still clamps it.
-    frame.append(_block((0.08, 1.96, 0.08), (cx, 1.14, cz)))
-    # The adjustment holes up the column's side, and the lock lever on its slot.
-    holes = [cylinder(0.008, (cx + 0.039, y, cz), (cx + 0.042, y, cz), 10) for y in (0.55, 0.75, 0.95, 1.15, 1.35)]
-    lever = merge(
-        _block((0.03, 0.08, 0.03), (cx + 0.055, 0.85, cz)),
-        cylinder(0.006, (cx + 0.07, 0.86, cz), (cx + 0.12, 0.9, cz), 8),
-        superellipsoid((0.03, 0.018, 0.018), 0.4, (cx + 0.125, 0.905, cz)),
-    )
-    fittings = [*holes, lever]
-    # The gas strut bracing the column to the left rail, behind it: its cylinder, rod and the teal collar.
-    strut_from, strut_to = (-0.24, 0.17, 0.25), (cx, 0.55, cz + 0.05)
-    mid = tuple(a + (b - a) * 0.45 for a, b in zip(strut_from, strut_to, strict=True))
-    fittings += [cylinder(0.018, strut_from, mid, 12), cylinder(0.008, mid, strut_to, 10)]
-    collar_at = tuple(a + (b - a) * 0.3 for a, b in zip(strut_from, strut_to, strict=True))
-    collar_to = tuple(a + (b - a) * 0.36 for a, b in zip(strut_from, strut_to, strict=True))
-    m.add("Collar", cylinder(0.021, collar_at, collar_to, 12), "blue_plastic")
-    # The cassette cabinet between the rails at the back, with vents on its sides, and the holder on top.
-    cabinet = _block((0.36, 0.56, 0.24), (0.03, 0.43, 0.18))
-    vents = [_block((0.004, 0.012, 0.16), (0.03 + s * 0.181, y, 0.18)) for s in (-1, 1) for y in (0.3, 0.34, 0.38, 0.42)]
-    frame.append(cabinet)
-    fittings += [*vents, _block((0.34, 0.24, 0.1), (0.0, 0.83, 0.22)), _block((0.36, 0.02, 0.12), (0.0, 0.72, 0.22))]
-    # The push bar behind the cabinet: two posts up from the rails' ends and a cross bar with black grips at its ends.
-    posts = [_block((0.03, 0.77, 0.03), (x, 0.535, 0.38)) for x in (-0.24, 0.24)]
-    bar = cylinder(0.014, (-0.32, 0.92, 0.38), (0.32, 0.92, 0.38), 12)
-    forks += [*posts, bar]
-    grips = [cylinder(0.02, (s * 0.255, 0.92, 0.38), (s * 0.32, 0.92, 0.38), 14) for s in (-1, 1)]
-    caps = [cylinder(0.022, (s * 0.32, 0.92, 0.38), (s * 0.33, 0.92, 0.38), 14) for s in (-1, 1)]
+    # The housing: the battery deck in front, which the column stands through, and the generator cabinet behind.
+    deck = rounded_slab((0.5, 0.2, 0.42), 0.04, 0.02, (0.0, 0.22, -0.13))
+    cabinet = rounded_slab((0.5, 0.62, 0.3), 0.04, 0.03, (0.0, 0.43, 0.19))
+    column = rounded_slab((0.09, 1.86, 0.09), 0.02, 0.0, (cx, 1.19, cz))
+    # The detector bin on top of the cabinet, open toward the push bar, and the bar's posts.
+    bin_ = rounded_slab((0.36, 0.2, 0.12), 0.02, 0.01, (0.0, 0.84, 0.2))
+    posts = [cylinder(0.016, (x, 0.74, 0.3), (x, 0.92, 0.38), 10) for x in (-0.22, 0.22)]
+    bar = cylinder(0.016, (-0.3, 0.92, 0.38), (0.3, 0.92, 0.38), 12)
+    m.add("Frame", merge(deck, cabinet, column, bin_, *posts, bar), "matte_plastic")
+    # Grey trim: a band round the housing's foot, the slot up the column's front that the carriage runs in, and the
+    # bin's mouth.
+    trim = [
+        _block((0.52, 0.04, 0.44), (0.0, 0.13, -0.13)),
+        _block((0.52, 0.04, 0.32), (0.0, 0.13, 0.19)),
+        _block((0.03, 1.4, 0.006), (cx, 1.2, cz - 0.046)),
+        _block((0.32, 0.02, 0.1), (0.0, 0.945, 0.2)),
+    ]
+    m.add("Fittings", merge(*trim), "matte_grey_plastic")
+    grips = [cylinder(0.02, (s * 0.22, 0.92, 0.38), (s * 0.31, 0.92, 0.38), 12) for s in (-1, 1)]
     m.add("Grips", merge(*grips), "black_plastic")
-    # Few parts, each of one material: every one is a draw, and lit up while the cart is looked at, a change.
-    m.add("Frame", merge(*frame, *caps), "plastic")
-    m.add("Fittings", merge(*fittings), "dark_steel")
-    m.add("Steel", merge(*forks), "steel")
-    # The floor lock: a pedal behind the cabinet, pressed down while the cart is locked.
+    # Big wheels at the back, either side of the cabinet, and swivel casters under the deck's front corners.
+    rear = [cylinder(0.13, (s * 0.25, 0.13, 0.22), (s * 0.29, 0.13, 0.22), 20) for s in (-1, 1)]
+    front = [_wheel(x, -0.3) for x in (-0.18, 0.18)]
+    m.add("Wheels", merge(*rear, *front), "rubber")
+    hubs = [cylinder(0.06, (s * 0.29, 0.13, 0.22), (s * 0.295, 0.13, 0.22), 14) for s in (-1, 1)]
+    m.add("Steel", merge(*hubs, *(part for x in (-0.18, 0.18) for part in _caster(x, -0.3))), "steel")
+    # The floor lock: a pedal under the cabinet's back, pressed down while the cart is locked.
     m.add("Pedal", _block((0.08, 0.025, 0.06), (0.12, 0.17, 0.36)), "red_plastic", (0.12, 0.17, 0.32))
     hx, hy, hz = XRAY_HEAD
-    # The arm: a carriage clamped round the column, with the crank that winds it on its side, and a straight steel beam
-    # from it to over the tube head, which hangs from a yoke at its end. The screen on the head's back stays clear.
+    # The arm: a carriage round the column with the crank that winds it on its side, a level beam to over the tube
+    # head, and the swivel the head hangs from.
     ay = hy + XRAY_ARM_ABOVE
-    carriage = merge(
-        _block((0.14, 0.22, 0.14), (cx, ay - 0.02, cz)),
-        _block((0.15, 0.02, 0.15), (cx, ay - 0.13, cz)),
-        cylinder(0.03, (cx + 0.07, ay - 0.05, cz), (cx + 0.095, ay - 0.05, cz), 16),
-    )
+    carriage = rounded_slab((0.14, 0.2, 0.14), 0.03, 0.02, (cx, ay - 0.02, cz))
+    beam = tube([(cx, ay, cz), (hx, ay, hz)], [(0.04, 0.035)] * 2, ring=12, exponent=4.0, smooth=0)
     crank = merge(
-        _block((0.012, 0.11, 0.02), (cx + 0.1, ay - 0.1, cz)),
+        cylinder(0.03, (cx + 0.07, ay - 0.05, cz), (cx + 0.09, ay - 0.05, cz), 14),
+        _block((0.012, 0.1, 0.02), (cx + 0.095, ay - 0.1, cz)),
         cylinder(0.006, (cx + 0.1, ay - 0.15, cz), (cx + 0.13, ay - 0.15, cz), 8),
     )
-    beam = _beam((cx, ay, cz), (hx, ay, hz - 0.02), 0.06, 0.08)
-    yoke = merge(
-        _block((0.12, 0.03, 0.12), (hx, ay - 0.05, hz)),
-        _block((0.02, 0.24, 0.07), (hx + 0.175, hy + 0.1, hz)),
-        _block((0.2, 0.02, 0.07), (hx + 0.085, ay - 0.05, hz)),
-    )
-    m.add("Arm", merge(carriage, beam, yoke, crank), "dark_steel", XRAY_HEAD)
-    m.add("Knob", superellipsoid((0.035, 0.022, 0.022), 0.4, (cx + 0.15, ay - 0.15, cz), detail=8), "plastic", XRAY_HEAD, "Arm")
-    m.add(
-        "Pivot",
-        merge(
-            cylinder(0.04, (hx + 0.16, hy + 0.02, hz), (hx + 0.19, hy + 0.02, hz), 20),
-            cylinder(0.015, (hx + 0.19, hy + 0.02, hz), (hx + 0.2, hy + 0.02, hz), 12),
-        ),
-        "steel",
-        XRAY_HEAD,
-        "Arm",
-    )
-    # The tube head: a sheet-metal box with a seam round it, the control panel on its back with its keys, and under it
-    # the collimator housing with its two shutter knobs.
-    back = hz + 0.13
-    keys = [_block((0.022, 0.016, 0.006), (hx - 0.06 + i * 0.03, hy + y, back + 0.006)) for i in range(5) for y in (0.035, 0.005)]
+    neck = cylinder(0.035, (hx, ay - 0.03, hz), (hx, hy + 0.1, hz), 14)
+    m.add("Arm", merge(carriage, beam, neck, crank), "matte_plastic", XRAY_HEAD)
+    m.add("Knob", superellipsoid((0.035, 0.022, 0.022), 0.4, (cx + 0.15, ay - 0.15, cz), detail=5), "black_plastic", XRAY_HEAD, "Arm")
+    m.add("Pivot", cylinder(0.045, (hx, hy + 0.14, hz), (hx, hy + 0.17, hz), 16), "matte_grey_plastic", XRAY_HEAD, "Arm")
+    # The tube head: the round tube housing across the arm's end, grey end caps, and under it the collimator box with a
+    # grip either side. The control panel and its keys are on the collimator's back.
+    back = hz + 0.1
+    keys = [_block((0.022, 0.014, 0.006), (hx - 0.06 + i * 0.03, hy - 0.15, back + 0.004)) for i in range(5)]
     head = merge(
-        _block((0.3, 0.28, 0.26), (hx, hy + 0.03, hz)),
-        _block((0.31, 0.012, 0.27), (hx, hy - 0.04, hz)),
+        cylinder(0.1, (hx - 0.16, hy + 0.02, hz), (hx + 0.16, hy + 0.02, hz), 20),
+        rounded_slab((0.24, 0.12, 0.2), 0.02, 0.01, (hx, hy - 0.12, hz)),
         *keys[:-1],
-        _block((0.2, 0.08, 0.18), (hx, hy - 0.14, hz)),
-        _block((0.22, 0.012, 0.2), (hx, hy - 0.1, hz)),
-        cylinder(0.018, (hx - 0.1, hy - 0.14, hz + 0.04), (hx - 0.12, hy - 0.14, hz + 0.04), 12),
-        cylinder(0.018, (hx - 0.1, hy - 0.14, hz - 0.04), (hx - 0.12, hy - 0.14, hz - 0.04), 12),
     )
-    m.add("Head", head, "plastic", XRAY_HEAD, "Arm")
-    m.add("Panel", _block((0.2, 0.2, 0.008), (hx, hy + 0.05, back + 0.002)), "dark_steel", XRAY_HEAD, "Head")
-    m.add("Screen", _block((0.12, 0.06, 0.006), (hx, hy + 0.1, back + 0.006)), "screen", XRAY_HEAD, "Head")
+    m.add("Head", head, "matte_plastic", XRAY_HEAD, "Arm")
+    caps = [cylinder(0.085, (hx + s * 0.16, hy + 0.02, hz), (hx + s * 0.175, hy + 0.02, hz), 20) for s in (-1, 1)]
+    grip = [(0.12, -0.08, -0.05), (0.16, -0.1, 0.0), (0.12, -0.16, 0.05)]
+    handles = [tube([(hx + s * x, hy + y, hz + z) for x, y, z in grip], [(0.012, 0.012)] * 3, ring=8, smooth=2) for s in (-1, 1)]
+    m.add("Panel", merge(*caps, *handles, _block((0.2, 0.09, 0.006), (hx, hy - 0.12, back + 0.001))), "matte_grey_plastic", XRAY_HEAD, "Head")
+    m.add("Screen", _block((0.1, 0.04, 0.004), (hx - 0.03, hy - 0.11, back + 0.004)), "screen", XRAY_HEAD, "Head")
     m.add("Expose", keys[-1], "orange_plastic", XRAY_HEAD, "Head")
-    m.add("Badge", _block((0.1, 0.025, 0.006), (hx, hy - 0.08, back - 0.004)), "blue_plastic", XRAY_HEAD, "Head")
-    # A coiled lead from the collimator, and the lens.
-    coil = [(hx + 0.08 + 0.012 * np.cos(t), hy - 0.15 - t * 0.006, hz + 0.09 + 0.012 * np.sin(t)) for t in np.linspace(0, 6 * np.pi, 40)]
-    m.add("Lead", tube(coil, [(0.003, 0.003)] * len(coil), ring=6), "fabric_white", XRAY_HEAD, "Head")
-    m.add("Lens", cylinder(0.06, (hx, hy - 0.18, hz), (hx, hy - 0.185, hz), 20), "glass", XRAY_HEAD, "Head")
+    m.add("Lens", cylinder(0.07, (hx, hy - 0.18, hz), (hx, hy - 0.185, hz), 20), "glass", XRAY_HEAD, "Head")
     return m
 
 
