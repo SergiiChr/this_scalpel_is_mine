@@ -416,13 +416,25 @@ def _sanitizer() -> Model:
 
 
 def _lamp() -> Model:
-    """Ceiling mounted surgical light. Origin at the lamp head's center."""
+    """Ceiling mounted LED surgical light: a white dome head with rings of LED cells round a central sterile handle,
+    hung from a yoke on a spring arm off a ceiling hub. Origin at the head's center, where the game hangs it over the
+    table (Room.LampHeight): the theatre's ceiling is 0.4 m above it."""
     m = Model("props", "surgical_lamp")
-    m.add("Mount", merge(cylinder(0.02, (0.0, 0.08, 0.0), (0.0, 0.7, 0.0)), cylinder(0.05, (0.0, 0.7, 0.0), (0.0, 0.76, 0.0), 20)), "steel")
-    head = lathe([(0.0, 0.08), (0.08, 0.08), (0.3, 0.0), (0.32, -0.03), (0.0, -0.03)], 40)
+    hub = -0.55
+    canopy = cylinder(0.09, (hub, 0.37, 0.0), (hub, 0.42, 0.0), 20)
+    m.add("Mount", merge(canopy, cylinder(0.03, (hub, 0.25, 0.0), (hub, 0.37, 0.0), 12)), "steel")
+    joints = [cylinder(0.035, (x, y, -0.03), (x, y, 0.03), 14) for x, y in ((hub, 0.26), (-0.16, 0.19))]
+    arm = tube([(hub, 0.26, 0.0), (-0.16, 0.19, 0.0)], [(0.026, 0.02)] * 2, ring=8, exponent=3.0, smooth=0)
+    yoke = tube([(-0.16, 0.19, 0.0), (-0.16, 0.14, 0.0), (-0.1, 0.12, 0.0), (0.0, 0.12, 0.0)], [(0.016, 0.016)] * 4, ring=8, smooth=2)
+    m.add("Arm", merge(arm, yoke, *joints, cylinder(0.022, (0.0, 0.06, 0.0), (0.0, 0.13, 0.0), 12)), "plastic")
+    head = lathe([(0.0, 0.075), (0.06, 0.075), (0.2, 0.052), (0.285, 0.018), (0.31, -0.012), (0.305, -0.03), (0.0, -0.03)], 32)
     m.add("Head", head, "plastic")
-    m.add("Lens", cylinder(0.28, (0.0, -0.031, 0.0), (0.0, -0.035, 0.0), 40), "flame")
-    m.add("Handle", cylinder(0.02, (0.0, -0.03, 0.0), (0.0, -0.12, 0.0), 12), "green_plastic")
+    m.add("Face", lathe([(0.285, -0.032), (0.0, -0.032)], 32), "matte_grey_plastic")
+    # Six LED cells round the handle and twelve further out, each a flat lens just under the grey face.
+    cells = [(r * np.cos(i * 2 * np.pi / n + r), r * np.sin(i * 2 * np.pi / n + r)) for r, n in ((0.11, 6), (0.21, 12)) for i in range(n)]
+    m.add("Lens", merge(*(moved(lathe([(0.034, 0.0), (0.0, 0.0)], 10), (x, -0.034, z)) for x, z in cells)), "led")
+    handle = [(0.0, -0.03), (0.05, -0.03), (0.045, -0.045), (0.022, -0.055), (0.02, -0.12), (0.03, -0.13), (0.026, -0.145), (0.0, -0.148)]
+    m.add("Handle", lathe(handle, 12), "green_plastic")
     return m
 
 

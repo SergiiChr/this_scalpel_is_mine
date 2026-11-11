@@ -73,6 +73,7 @@ PALETTE: dict[str, Swatch] = {
     "bone": Swatch((0.9, 0.87, 0.76), 0.6),
     "blood_bag": Swatch((0.45, 0.03, 0.06), 0.2),
     "flame": Swatch((1.0, 0.6, 0.15), 0.5),
+    "led": Swatch((1.0, 0.97, 0.9), 0.5),
     "cotton": Swatch((0.96, 0.95, 0.92), 1.0),
     "iodine": Swatch((0.55, 0.3, 0.12), 0.9),
     "whiskey": Swatch((0.6, 0.35, 0.1), 0.2),
