@@ -338,8 +338,8 @@ def _drawer_cart(m: Model) -> None:
         for x in (-hw / 2, hw / 2):
             fronts.append(_block((hw - DRAWER_GAP, height, 0.016), (x, y - height / 2, hd + 0.006)))
             bar_y, bar_z = y - 0.03, hd + 0.032
-            handles.append(cylinder(0.006, (x - 0.09, bar_y, bar_z), (x + 0.09, bar_y, bar_z), 10))
-            handles += [cylinder(0.005, (x + s * 0.08, bar_y, hd + 0.014), (x + s * 0.08, bar_y, bar_z), 8) for s in (-1, 1)]
+            handles.append(cylinder(0.006, (x - 0.09, bar_y, bar_z), (x + 0.09, bar_y, bar_z), 8))
+            handles += [cylinder(0.005, (x + s * 0.08, bar_y, hd + 0.014), (x + s * 0.08, bar_y, bar_z), 6) for s in (-1, 1)]
         y -= height + DRAWER_GAP
     # The push handle: a loop out of the left side behind the middle, its grip in the middle.
     loop = [(-hw, 0.62, -0.15), (-hw - 0.03, 0.62, -0.15), (-hw - 0.03, CART_TOP - 0.06, -0.15), (-hw, CART_TOP - 0.06, -0.15)]
@@ -369,16 +369,17 @@ def _organizer(m: Model) -> None:
     tiers = (1.12, 1.36)
     top_y = tiers[-1] + 0.22
     frame = [_block((0.025, top_y - CART_TOP, 0.025), (s * (hw - 0.0125), (top_y + CART_TOP) / 2, back + 0.0125)) for s in (-1, 1)]
-    frame.append(_block((CART_WIDTH - 0.05, top_y - CART_TOP - 0.02, 0.008), (0.0, (top_y + CART_TOP) / 2, back + 0.004)))
+    # Thin sheets are plain boxes: an eased edge on a few millimeters doesn't show.
+    frame.append(moved(trimesh.creation.box((CART_WIDTH - 0.05, top_y - CART_TOP - 0.02, 0.008)), (0.0, (top_y + CART_TOP) / 2, back + 0.004)))
     frame += [_block((CART_WIDTH, 0.015, depth), (0.0, y - 0.0075, back + depth / 2)) for y in (*tiers, top_y)]
-    frame += [_block((0.012, 0.2, depth), (s * (hw - 0.006), y + 0.1, back + depth / 2)) for y in tiers for s in (-1, 1)]
+    frame += [moved(trimesh.creation.box((0.012, 0.2, depth)), (s * (hw - 0.006), y + 0.1, back + depth / 2)) for y in tiers for s in (-1, 1)]
     frame.append(_block((CART_WIDTH, 0.03, 0.01), (0.0, top_y + 0.015, front - 0.005)))
     bins, labels = [], []
     pitch = (CART_WIDTH - 0.05) / 3
     for y in tiers:
         for x in (-pitch, 0.0, pitch):
-            bins.append(superellipsoid((pitch - 0.015, 0.13, depth - 0.02), 0.08, (x, y + 0.065, back + depth / 2), detail=8))
-            labels.append(_block((pitch - 0.07, 0.03, 0.004), (x, y + 0.105, front - 0.008)))
+            bins.append(superellipsoid((pitch - 0.015, 0.13, depth - 0.02), 0.08, (x, y + 0.065, back + depth / 2), detail=6))
+            labels.append(moved(trimesh.creation.box((pitch - 0.07, 0.03, 0.004)), (x, y + 0.105, front - 0.008)))
     m.add("Organizer", merge(*frame), "plastic")
     m.add("Bins", merge(*bins), "frosted_plastic")
     m.add("Labels", merge(*labels), "blue_plastic")
