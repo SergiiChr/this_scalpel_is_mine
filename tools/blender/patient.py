@@ -2,7 +2,7 @@
 
 Joint positions match the old part pivots (tools/assetgen/patient.py), so surgical sites and the animator line up.
 Bones: Torso, Chest, Neck, Head, Jaw, UpperArm/Forearm/Hand L/R, Thigh/Shin/Foot L/R.
-Rigid parts on the Head bone: Eyes, Irises, Lids (closed eyelids, shown while unconscious), Hair. Gown is skinned.
+Rigid parts on the Head bone: Eyes, Irises, Lids (closed eyelids, shown while unconscious), Hair. Gown and Lips are skinned.
 The skeleton (tools/blender/skeleton.py) is one rigid part per bone, named Skeleton<Bone>.
 """
 
@@ -187,6 +187,7 @@ BUDGETS = {
     "Body": 34000,
     "Gown": 5000,
     "Hair": 3000,
+    "Lips": 600,
     "Brows": 800,
     "EyeL": 1200,
     "EyeR": 1200,
@@ -199,7 +200,7 @@ BUDGETS = {
 
 def build() -> bpy.types.Object:
     shells = [scene.blobs("Torso", _torso(), resolution=0.006), scene.blobs("Head", face.base(), resolution=0.0015)]
-    shells += face.ear_shells() + face.eyelid_shells() + face.mouth_shells()
+    shells += face.ear_shells() + face.eyelid_shells() + face.mouth_shells() + face.lip_shells()
     for side in (1.0, -1.0):
         arm, hand, fingers = _arm(side)
         shells += [
@@ -218,12 +219,13 @@ def build() -> bpy.types.Object:
     body = face.carve_mouth(body)
     # The hair grows from the dense scalp, so its hairline stays smooth.
     hair = _hair(body)
+    lips = face.lips(body)
     body = scene.fit(body, BUDGETS["Body"])
     gown = _gown(body)
     brows = face.eyebrows(body)
     eye_l, eye_r, lids = face.eyes()
     upper_teeth, lower_teeth, tongue = face.teeth_and_tongue()
-    for part in (gown, hair, brows, eye_l, eye_r, lids, upper_teeth, lower_teeth, tongue):
+    for part in (gown, hair, lips, brows, eye_l, eye_r, lids, upper_teeth, lower_teeth, tongue):
         scene.fit(part, BUDGETS[part.name])
     bones = skeleton.build()
     scene.clean()
@@ -231,7 +233,9 @@ def build() -> bpy.types.Object:
     rig = scene.armature("PatientRig", BONES)
     scene.bind(body, rig)
     scene.bind(gown, rig)
-    scene.reweight(body, "Jaw", face.jaw_weight, "Head")
+    scene.bind(lips, rig)
+    for part in (body, lips):
+        scene.reweight(part, "Jaw", face.jaw_weight, "Head")
     for part in (hair, brows, eye_l, eye_r, lids, upper_teeth):
         scene.attach(part, rig, "Head")
     for part in (lower_teeth, tongue):

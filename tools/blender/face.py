@@ -76,6 +76,25 @@ def mouth_shells() -> list[bpy.types.Object]:
     return shells
 
 
+# Lips, from adult male averages: the upper red lip about 7 mm tall with a Cupid's bow, the lower about 10 mm and
+# fuller, both rolling forward a couple of millimetres past the skin around them, the upper a little ahead.
+# Points run from the mouth corner to the middle as (z, x, radius); the far half mirrors them.
+UPPER_LIP = ((0.0225, 0.6069, 0.0008), (0.019, 0.6077, 0.0018), (0.012, 0.6092, 0.0028), (0.005, 0.6101, 0.0031), (0.0, 0.6094, 0.003))
+LOWER_LIP = ((0.0225, 0.6066, 0.0008), (0.018, 0.6045, 0.0026), (0.01, 0.6028, 0.0039), (0.0, 0.6025, 0.0042))
+# Lip tube centers in the middle, out of the face; they fall back along the dental arch toward the mouth corners.
+UPPER_LIP_Y, LOWER_LIP_Y, LIP_ARCH = 0.1125, 0.1103, 14.0
+
+
+def lip_shells() -> list[bpy.types.Object]:
+    """Upper and lower lip as tubes along the mouth, thick in the middle and thin at the corners."""
+    shells = []
+    for name, half, front in (("UpperLip", UPPER_LIP, UPPER_LIP_Y), ("LowerLip", LOWER_LIP, LOWER_LIP_Y)):
+        row = [*half, *((-z, x, r) for z, x, r in reversed(half[:-1]))]
+        points: list[Vec3] = [(x, front - LIP_ARCH * z * z, z) for z, x, _ in row]
+        shells.append(scene.curve_tube(name, points, 1.0, [r for _, _, r in row], resolution=10))
+    return shells
+
+
 def ear_shells() -> list[bpy.types.Object]:
     """Each ear: a flat base, the curled helix around its rim, the antihelix inside and a soft lobe.
     Ear-local (up, back) coordinates map onto the side of the head, tilted back a little."""
@@ -173,7 +192,7 @@ CAVITY: tuple[Vec3, Vec3] = ((0.606, 0.088, 0.0), (0.012, 0.019, 0.023))
 def carve_mouth(head: bpy.types.Object) -> bpy.types.Object:
     """Cuts the slit between the lips and hollows out the mouth behind it (lined with the dark mouth material)."""
     cavity = scene.blobs("Cavity", [ellipsoid(*CAVITY, 2.0)], resolution=0.001)
-    slit = scene.box("Slit", (MOUTH_LINE_X, 0.103, 0.0), (0.0013, 0.022, 0.04))
+    slit = scene.box("Slit", (MOUTH_LINE_X, 0.105, 0.0), (0.0013, 0.026, 0.04))
     head = scene.subtract(scene.subtract(head, slit, fast=True), cavity, fast=True)
     center, size = np.array(CAVITY[0]), np.array(CAVITY[1]) * 1.03
 
@@ -184,6 +203,28 @@ def carve_mouth(head: bpy.types.Object) -> bpy.types.Object:
         return np.asarray(cavity_wall | slit_wall, dtype=np.bool_)
 
     return scene.assign(head, scene.material("mouth", (0.35, 0.08, 0.09), roughness=0.3, subsurface=0.1), inside)
+
+
+def _vermilion(p: NDArray[np.float64]) -> NDArray[np.float64]:
+    """How far inside the red of the lips each point lies, in metres: from the lower lip's lower edge up to the upper
+    lip's Cupid's bow, on the front of the face. Negative outside."""
+    z = np.abs(p[:, 2])
+    upper = np.interp(z, [u[0] for u in reversed(UPPER_LIP)], [u[1] + u[2] for u in reversed(UPPER_LIP)])
+    lower = np.interp(z, [u[0] for u in reversed(LOWER_LIP)], [u[1] - u[2] for u in reversed(LOWER_LIP)])
+    return np.asarray(np.minimum.reduce([upper - p[:, 0], p[:, 0] - lower, UPPER_LIP[0][0] - z, p[:, 1] - 0.1]), dtype=np.float64)
+
+
+def lips(head: bpy.types.Object) -> bpy.types.Object:
+    """The red of the lips as a thin skin over the face, cut cleanly along the lip line. A separate part, so the game
+    can tint it from the patient's skin tone and its border stays crisp when the face is decimated."""
+    red = bpy.data.objects.new("Lips", head.data.copy())
+    scene.link(red)
+    scene.cut_below(red, 0, 0.59)
+    scene.cut_below(red, 0, 0.62, above=True)
+    scene.keep(red, _vermilion)
+    scene.inflate(red, lambda p: np.full(len(p), 0.00025))
+    # The color is only for review renders: the game tints it from the skin tone.
+    return scene.finish(red, scene.material("lips", (0.7, 0.45, 0.42), roughness=0.4, subsurface=0.2))
 
 
 def jaw_weight(p: NDArray[np.float64]) -> NDArray[np.float64]:

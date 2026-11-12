@@ -157,13 +157,14 @@ public partial class PatientBody : Node3D {
         var skin = Materials.BodySkin(tone);
         // The gown gets the same carve-capable material, or it would show through the surgical site on the hips.
         var gown = Materials.BodySkin(Materials.PatientGown);
-        _bodyMaterials.AddRange([skin, gown]);
+        var lips = Materials.BodySkin(Materials.LipTone(tone));
+        _bodyMaterials.AddRange([skin, gown, lips]);
         foreach (var material in _bodyMaterials) {
             Materials.SetSiteMaps(material, WoundMap.Texture(WoundMap.Layer.Wounds), WoundMap.Texture(WoundMap.Layer.Fluids),
                 WoundMap.Texture(WoundMap.Layer.Bleeds));
         }
         var model = ModelSlot.Instantiate("patient", "body", _bodyRoot,
-            new Dictionary<string, Material> { ["skin"] = skin, ["gown"] = gown });
+            new Dictionary<string, Material> { ["skin"] = skin, ["gown"] = gown, ["lips"] = lips });
         _skinModel = (Node3D)model.FindChild("Body", true, false);
         BuildXrayLayer(model);
         AddChild(Animator);
@@ -827,6 +828,7 @@ public partial class PatientBody : Node3D {
         _pallor = value;
         SkinMaterial?.SetShaderParameter(ShaderParam.Pallor, value);
         _bodyMaterials[0].SetShaderParameter(ShaderParam.Pallor, value);
+        _bodyMaterials[2].SetShaderParameter(ShaderParam.Pallor, value);
     }
 
     /// <summary>

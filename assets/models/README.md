@@ -29,7 +29,8 @@ pixel line art cut to white on transparent; the game tints them.
 Model space is the game's: Y up, and for the patient +X toward the head and +Z the patient's left.
 The glove is modeled wrist at the origin, fingers along +X, palm facing -Y, thumb toward -Z.
 
-Special material names: `skin` and `gown` (cut away under the surgical site where the simulated skin layer takes over),
+Special material names: `skin`, `gown` and `lips` (cut away under the surgical site where the simulated skin layer takes over;
+the patient's lips are tinted from the skin tone),
 `tint` (recolored per instance), `flame` (unshaded glow), `organ` (wet flesh shader), `print` (kept as imported, its
 texture's alpha cut out), `frosted_plastic` (see-through, less than `glass`).
 Tools: grip at the origin, tip at `(0, 0, -length)` with `length` from `data/tools.cfg`.
