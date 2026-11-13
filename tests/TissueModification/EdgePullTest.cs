@@ -33,12 +33,8 @@ public class EdgePullTest {
     [TestCase("slit_throat", "forceps")]
     [TestCase("hand_stitch", "forceps")]
     [TestCase("ambulance_bullet", "forceps")]
+    [TestCase("leg_extension", "forceps", Timeout = Limits.Slow)]
     public async Task EdgePullsInStages(string scenario, string toolId) => await PullEdge(scenario, toolId);
-
-    [TestCase("leg_extension", "forceps", Timeout = Limits.Slow, Description = "KNOWN ISSUE: on the reshaped thigh the "
-        + "cut's two skin walls cross each other at its end, where its lips meet, before the edge is pulled at all.")]
-    public async Task EdgePullsInStagesKnownIssue(string scenario, string toolId) =>
-        await KnownIssue.Expect("cut walls do not cross themselves", () => PullEdge(scenario, toolId));
 
     [TestCase("forceps", 20, 30, 1, Timeout = Limits.Slow)]
     [TestCase("retractor", 20, 30, 1)]
@@ -47,14 +43,9 @@ public class EdgePullTest {
     [TestCase("forceps", 5, 0, 1)]
     [TestCase("retractor", 5, 0, 1)]
     [TestCase("retractor", 5, 0, -1, Timeout = Limits.Slow)]
+    [TestCase("forceps", 5, 0, -1)]
     public async Task ThighEntryEdgePullsWithBoundedMouseEffort(string toolId, int frames, int pause, int side) =>
         await PullEdge("bullet_muscle", toolId, frames, pause, side, entry: true);
-
-    [TestCase("forceps", 5, 0, -1, Description = "KNOWN ISSUE: on the reshaped thigh the inner lip slides round the "
-        + "thigh instead of lifting, and a quick pull tears the skin at 30 mm.")]
-    public async Task ThighEntryEdgePullsWithBoundedMouseEffortKnownIssue(string toolId, int frames, int pause, int side) =>
-        await KnownIssue.Expect("the pull doesn't tear the skin at 30.0 mm",
-            () => PullEdge("bullet_muscle", toolId, frames, pause, side, entry: true));
 
     [TestCase]
     public void EdgePullMeasurementsCatchAbruptStopsReboundsAndWobble() {

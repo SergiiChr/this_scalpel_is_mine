@@ -120,7 +120,8 @@ public sealed partial class TissueSim {
     /// <see cref="Freed"/>: the wound's edge moves as one block of skin, fat and muscle, and the tethering of the
     /// deeper layers comes back over this distance into the bed.</summary>
     public const float FreedReach = 0.06f;
-    /// <summary>How far (uv) a grip drags the skin around it along.</summary>
+    /// <summary>How far a grip drags the skin around it along, as a share of the site's mean side (PatchRadius).
+    /// </summary>
     public const float GripPatch = 0.15f;
     /// <summary>How firmly a grip drags the skin per solver iteration at its center.</summary>
     public const float GripDrag = 1f;
@@ -158,6 +159,9 @@ public sealed partial class TissueSim {
     /// <summary>The share of a move away from where the held skin belongs that it still gives just short of
     /// <see cref="GripStrain"/>.</summary>
     private const float LeastGive = 0.2f;
+    /// <summary>Outside a fold's footprint, the share of UprightShare a spring's reach along the body comes down to
+    /// when the grip is at its limit (StrainAt()): only one row about to pass the next stops the hand there.</summary>
+    private const float OverFold = 0.5f;
     /// <summary>Pulls up to this far (meters) drag the patch fully, twice as far not at all.</summary>
     public const float DragReach = 0.035f;
     /// <summary>Pulls beyond this are deliberate flap turnovers, whose faces may turn past vertical.</summary>
@@ -1109,14 +1113,19 @@ public sealed partial class TissueSim {
         foreach (var s in patch.Springs) {
             ref readonly var spring = ref _springs[s];
             var unpulled = pin.UnpulledAll[s];
-            if (!spring.Active || spring.Kind != SpringKind.Tissue || unpulled <= 0.00001f || !NearFold(spring.A) || !NearFold(spring.B)) {
+            if (!spring.Active || spring.Kind != SpringKind.Tissue || unpulled <= 0.00001f) {
                 continue;
             }
-            var length = Pos[spring.B].DistanceTo(Pos[spring.A]);
-            worst = Mathf.Max(worst, GripStrain * Mathf.Min(unpulled, spring.Rest) / (GripBunch * Mathf.Max(length, 0.0001f)));
+            var near = NearFold(spring.A) && NearFold(spring.B);
+            if (near) {
+                var length = Pos[spring.B].DistanceTo(Pos[spring.A]);
+                worst = Mathf.Max(worst, GripStrain * Mathf.Min(unpulled, spring.Rest) / (GripBunch * Mathf.Max(length, 0.0001f)));
+            }
             // Skin beside a cut lies crushed already, its lips drawn back into it: the reach it has left when the
-            // grip takes hold is what it has to give.
-            var least = UprightShare * Mathf.Min(pin.UnpulledAlong[s], 1f);
+            // grip takes hold is what it has to give. Before the fold's footprint takes hold, only skin about to pass
+            // over its next row counts: on a round limb, skin pushed down its side toward the drape keeps its
+            // springs' length by sinking, while its rows pass each other.
+            var least = UprightShare * Mathf.Min(pin.UnpulledAlong[s], 1f) * (near ? 1f : OverFold);
             worst = Mathf.Max(worst, GripStrain * least / Mathf.Max(Along(s), 0.0001f));
         }
         return worst;
@@ -1912,7 +1921,7 @@ public sealed partial class TissueSim {
         // weights alone fall off faster than a long push allows, and the rows ahead would fold flat over each other.
         // It comes to rest by the patch's edge, where the skin beyond takes over: a push too long to fit within the
         // patch bunches the skin ahead evenly instead.
-        var falloff = pushed > 0.0001f ? Mathf.Max((1f - 1f / GripBunch) / pushed, 1f / (GripPatch * Mathf.Min(Size.X, Size.Y))) : 0f;
+        var falloff = pushed > 0.0001f ? Mathf.Max((1f - 1f / GripBunch) / pushed, 1f / PatchRadius) : 0f;
         for (var n = 0; n < patch.Around.Length; n++) {
             var j = patch.Around[n];
             var ahead = new Vector2(Rest[j].X - Rest[k].X, Rest[j].Z - Rest[k].Z).Dot(way);
@@ -1950,7 +1959,7 @@ public sealed partial class TissueSim {
         foreach (var pin in _pins.Values) {
             // A grip drags a whole patch along: all of it moves.
             var at = CellOf(pin.Particle);
-            var patch = new Vector2I(Mathf.CeilToInt(GripPatch * ResX), Mathf.CeilToInt(GripPatch * ResY));
+            var patch = new Vector2I(Mathf.CeilToInt(PatchRadius / Size.X * ResX), Mathf.CeilToInt(PatchRadius / Size.Y * ResY));
             low = low.Min(at - patch);
             high = high.Max(at + patch);
         }
@@ -2314,8 +2323,15 @@ public sealed partial class TissueSim {
         return s;
     }
 
+    /// <summary>How far (meters) a grip drags the skin along, the same each way: in uv a limb's narrow site would
+    /// drag skin half as far across the limb as along it, and the skin pushed across would bunch up within a few
+    /// millimeters.</summary>
+    private float PatchRadius => GripPatch * (Size.X + Size.Y) * 0.5f;
+
+    private static Vector2 Planar(Vector3 v) => new(v.X, v.Z);
+
     /// <summary>
-    /// The skin a grip on particle k drags along: particles within GripPatch reached without crossing a cut and not
+    /// The skin a grip on particle k drags along: particles within PatchRadius reached without crossing a cut and not
     /// across one from it in a straight line, weighted falling off in a straight line from the edge of the skin the grip
     /// holds (GripHold) to 0 at the edge of the patch.
     /// </summary>
@@ -2331,7 +2347,7 @@ public sealed partial class TissueSim {
         var around = new List<int>();
         var weights = new List<float>();
         var held = new List<int>();
-        var reach = GripPatch * (Size.X + Size.Y) * 0.5f - GripHold;
+        var reach = PatchRadius - GripHold;
         var seen = new HashSet<int> { k };
         var queue = new Queue<int>();
         queue.Enqueue(k);
@@ -2342,7 +2358,7 @@ public sealed partial class TissueSim {
                     continue;
                 }
                 var other = _springs[s].A == at ? _springs[s].B : _springs[s].A;
-                if (seen.Contains(other) || UvOf(other).DistanceTo(UvOf(k)) >= GripPatch) {
+                if (seen.Contains(other) || Planar(Rest[other] - Rest[k]).Length() >= PatchRadius) {
                     continue;
                 }
                 seen.Add(other);

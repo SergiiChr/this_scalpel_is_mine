@@ -1212,6 +1212,17 @@ public partial class PatientBody {
                 lipDown[v] = down;
             }
         }
+        // Where a cut's lips still touch, as at a cut's end that stops on a grid line, the walls under them start
+        // from one point: any difference in their way down crosses them. They share it there and part with the gap.
+        foreach (var (v, opposite) in plan.OppositeLip) {
+            if (v > opposite || !lipDown.TryGetValue(v, out var own) || !lipDown.TryGetValue(opposite, out var other)) {
+                continue;
+            }
+            var shared = ((own.Out + other.Out).Normalized(), (own.Thick + other.Thick) * 0.5f);
+            var apart = Mathf.Clamp(vertices[v].DistanceTo(vertices[opposite]) / Mathf.Max(shared.Item2, 1e-6f), 0f, 1f);
+            lipDown[v] = (shared.Item1.Lerp(own.Out, apart).Normalized(), Mathf.Lerp(shared.Item2, own.Thick, apart));
+            lipDown[opposite] = (shared.Item1.Lerp(other.Out, apart).Normalized(), Mathf.Lerp(shared.Item2, other.Thick, apart));
+        }
         var bulge = WallBulge[layer];
         // How far a wall down from lip vertex v bulges halfway down: by its thickness, but only a small share of the
         // cut's gape there, so the walls never close it (a lip with nothing across from it is a cut's closed end).
@@ -1297,7 +1308,12 @@ public partial class PatientBody {
             var end = refinedVertices[b];
             var lip = plan.Apex.ContainsKey(a) ? b : a;
             var tipThickness = WallThickness(plan.Owner[lip]);
-            var low = UnderSkin(WithinRestingSkin(refinedVertices[lip] - Outward(layer, plan.Owner[lip]) * tipThickness, plan.Owner[lip], depth + tipThickness), plan.Owner[lip]);
+            // Down to the bottom of the lip's own wall column where it has one: dropped its own way, the tip's face
+            // would cut through the wall beside it.
+            var low = lipColumns.TryGetValue(lip, out var column)
+                ? wallVertices[column + WallRows]
+                : UnderSkin(WithinRestingSkin(refinedVertices[lip] - Outward(layer, plan.Owner[lip]) * tipThickness, plan.Owner[lip], depth + tipThickness), plan.Owner[lip]);
+            if (lipDown.TryGetValue(lip, out var down)) { tipThickness = down.Thick; }
             var normal = (end - start).Cross(low - start).Normalized();
             if (normal.IsZeroApprox()) { return; }
             if (normal.Dot(start - refinedVertices[inside]) < 0f) { normal = -normal; }

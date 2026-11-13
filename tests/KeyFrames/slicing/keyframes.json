@@ -73,6 +73,6 @@
   "thigh_graft_02_cut_top.jpg": "the closed circle frees a piece of skin (23 grid points), cut through the skin only; the circle is cut cleanly: 0 tears, hand at most 0.022 m/s",
   "thigh_graft_03_picked_up_side.jpg": "the forceps pinch the piece; pinched and lifted 4 mm, the piece is still in place",
   "thigh_graft_03_picked_up_top.jpg": "the forceps pinch the piece; pinched and lifted 4 mm, the piece is still in place",
-  "thigh_graft_04_wound_side.jpg": "lifted higher, the piece comes off whole; the forceps hold it as a skin graft; the wound shows the fat under the skin (fat); no tears around the wound; the simulated skin meets the body model without a step (0.06 mm off at its edge)",
-  "thigh_graft_04_wound_top.jpg": "lifted higher, the piece comes off whole; the forceps hold it as a skin graft; the wound shows the fat under the skin (fat); no tears around the wound; the simulated skin meets the body model without a step (0.06 mm off at its edge)"
+  "thigh_graft_04_wound_side.jpg": "lifted higher, the piece comes off whole; the forceps hold it as a skin graft; the wound shows the fat under the skin (fat); no tears around the wound; the simulated skin meets the body model without a step (0.07 mm off at its edge)",
+  "thigh_graft_04_wound_top.jpg": "lifted higher, the piece comes off whole; the forceps hold it as a skin graft; the wound shows the fat under the skin (fat); no tears around the wound; the simulated skin meets the body model without a step (0.07 mm off at its edge)"
 }
