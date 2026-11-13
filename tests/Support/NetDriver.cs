@@ -201,7 +201,15 @@ public partial class NetDriver : NetSession {
         // Hand the tool across the table: both surgeons reach over the patient. 12 cm apart: close enough to pass
         // (Surgeon.PassDistance), not so close the hands bump and drop it.
         hand.Level = 0;
-        hand.LocalTarget = me.ToLocal(new Vector3(0f, 1.3f, -0.06f));
+        var across = new Vector3(0f, 1.3f, -0.06f);
+        hand.LocalTarget = me.ToLocal(across);
+        // Lifted at the end of the cut, the hand may already be within reach of the host's: the host looks only once it
+        // has come to rest over the middle of the table. It gets there in steps, briefly slow between them, so at rest is
+        // well under the fumble speed.
+        await Until(() => new Vector2(hand.GlobalPosition.X - across.X, hand.GlobalPosition.Z - across.Z).Length() < 0.01f
+            && hand.Speed <= Surgeon.FumbleSpeed / 10f, "the client's hand coming to rest over the table",
+            () => $"hand at {hand.GlobalPosition} moving {hand.Speed} m/s");
+        Tell(surgery, "held out");
         // The host decides the pass from where it sees both hands: until they hold still there, it's fumbled.
         await Heard("in reach");
         me.Active = 1;
@@ -231,6 +239,7 @@ public partial class NetDriver : NetSession {
         await Until(() => cutting.Lowered, "the client lowering the scalpel", () => $"lowered={cutting.Lowered}");
         await Until(() => !cutting.Lowered, "the client lifting the scalpel", () => $"lowered={cutting.Lowered}");
         Tell(surgery, "blade out");
+        await Heard("held out");
         // What the host checks when the client lets go (ToolManager.PassOnHost): the hands in reach and still.
         await Until(() => partner.PassTarget(1)?.Surgeon == me
             && cutting.Speed <= Surgeon.FumbleSpeed && me.Hands[0].Speed <= Surgeon.FumbleSpeed,
