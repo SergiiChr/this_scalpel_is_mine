@@ -217,6 +217,8 @@ public class NeedleTest {
         // Whatever the last thread was pulled to before it was tied, a new one starts slack.
         AssertFloat(driver.Body.Tissue.Thread(thread)!.Tension)
             .OverrideFailureMessage($"the {layer} thread starts slack").IsEqual(ToolActions.SutureStartTension);
+        // The thread is drawn on the sheet as it was when its holes last moved: compared with it once it's at rest.
+        await Frames.Until(() => driver.Body.Tissue.IsSleeping, 5f);
         var routes = driver.Body.DrawnThread(thread)!.Routes;
         AssertBool(routes.Count > 0).OverrideFailureMessage("the deep layer has exposed thread spans").IsTrue();
         AssertThreadStaysOnLayer(driver.Body, routes, layer);

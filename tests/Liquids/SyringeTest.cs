@@ -1226,6 +1226,9 @@ public class SyringeTest {
     private async Task AimLands(Surgeon me, SurgeonHand hand) {
         await _bench.Stage(SyringeBench.Cases[6]);
         await SyringeBench.Release();
+        // The other hand held up off the patient: its glove lying close beside the needle would be what the aim rests on.
+        me.Hands[1 - me.Active].LocalTarget = new Vector3(-0.3f, 1f, -0.1f);
+        await Frames.Physics(20);
         foreach (var tilt in (float[])[-0.4f, -1.3f]) {
             await SyringeBench.Aim(new Vector2(0f, (hand.Tilt - tilt) / Surgeon.AimSensitivity));
             await Frames.Physics(20);

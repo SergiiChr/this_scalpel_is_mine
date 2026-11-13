@@ -24,7 +24,7 @@ public partial class Drape : MeshInstance3D {
     public const float Offset = 0.012f;
     /// <summary>How steeply the sheet falls past what holds it up (height per meter across): down the flanks to the
     /// table.</summary>
-    public const float Fall = 2.5f;
+    public const float Fall = 2.4f;
     /// <summary>How far the sheet hangs over its ends.</summary>
     public const float EndHem = 0.04f;
     /// <summary>How much of the site's edge the sheet covers, as a share of the site: the fixed border of the simulated
@@ -81,8 +81,8 @@ public partial class Drape : MeshInstance3D {
         foreach (var mesh in meshes) {
             Split(mesh, root.GlobalTransform.AffineInverse() * mesh.GlobalTransform, trunkFaces, armFaces);
         }
-        var trunk = new TriangleMesh();
-        trunk.CreateFromFaces([.. trunkFaces]);
+        var trunk = new FineTriangleMesh();
+        trunk.CreateFromFaces(trunkFaces);
         var columns = Mathf.CeilToInt((ToX - FromX) / Cell) + 1;
         // An odd count: a row runs down the middle, between the legs.
         var rows = (Mathf.RoundToInt(MaxHalfWidth / Cell) * 2) + 1;
@@ -101,7 +101,7 @@ public partial class Drape : MeshInstance3D {
         var (left, right) = (Side(armNear, 0, columns), Side(armNear, 1, columns));
         // Each column spans its own width, so the grid's last rows run along the sheet's sides.
         Vector2 Across(int i, int j) => new(FromX + i * Cell, Mathf.Lerp(-left[i], right[i], j / (rows - 1f)));
-        var heights = Lay(trunk, columns, rows, Across, up);
+        var heights = Lay(trunk, trunkFaces, columns, rows, Across, up);
         Vector3 PointAt(int i, int j) {
             var at = Across(i, j);
             return new(at.X, heights[j * columns + i], at.Y);
@@ -131,7 +131,7 @@ public partial class Drape : MeshInstance3D {
         }
         Vector3 EndBelow(Vector3 p, Vector3 outward) {
             var hit = trunk.IntersectRay(p + outward, Vector3.Down * up);
-            var under = hit.Count > 0 ? up * hit["position"].AsVector3().Y : -PatientBody.HalfHeight;
+            var under = hit is { } skin ? up * skin.Position.Y : -PatientBody.HalfHeight;
             return new Vector3(p.X, up * Mathf.Max(up * p.Y - EndHem, under + Offset / 2f), p.Z) + outward;
         }
         Vector3 SideBelow(int i, int j, float sign) {
@@ -158,8 +158,8 @@ public partial class Drape : MeshInstance3D {
         Mesh = surface.Commit();
         _arrays = ((ArrayMesh)Mesh).SurfaceGetArrays(0);
         _laid = _arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
-        float SkinUnder(float x, float z) => trunk.IntersectRay(new Vector3(x, up * 0.5f, z), Vector3.Down * up) is { Count: > 0 } hit
-            ? up * hit["position"].AsVector3().Y : float.NaN;
+        float SkinUnder(float x, float z) => trunk.IntersectRay(new Vector3(x, up * 0.5f, z), Vector3.Down * up) is { } hit
+            ? up * hit.Position.Y : float.NaN;
         _skin = [.. _laid.Select(v => SkinUnder(v.X, v.Z))];
         // Up to a cell each way, diagonals too: the skin rising between the sheet's points (toes) is under the faces
         // round a point.
@@ -298,18 +298,19 @@ public partial class Drape : MeshInstance3D {
         IEnumerable<int> Around(int i, int span) => Enumerable.Range(Mathf.Max(i - span, 0), Mathf.Min(i + span, columns - 1) - Mathf.Max(i - span, 0) + 1);
         var raw = Enumerable.Range(0, columns).Select(i => Mathf.Clamp(armNear[side, i] - ArmClearance, MinHalfWidth, MaxHalfWidth)).ToArray();
         var held = Enumerable.Range(0, columns).Select(i => Around(i, SideSpan).Min(n => raw[n])).ToArray();
-        // Averaging columns that each hold in this one keeps it short of its arm too.
-        return [.. Enumerable.Range(0, columns).Select(i => Around(i, SideSpan / 2).Average(n => held[n]))];
+        // Averaging columns that each hold in this one keeps it short of its arm too. As wide as the hold, so past a hand
+        // the side widens over a hand's length: a quicker step stands its edge up steeper than the sheet falls.
+        return [.. Enumerable.Range(0, columns).Select(i => Around(i, SideSpan).Average(n => held[n]))];
     }
 
     /// <summary>How far out (|z|) the trunk and legs reach to the <paramref name="sign"/> side at <paramref name="x"/>,
     /// at any height: hips and chests bulge past the top that rays from above find.</summary>
-    private static float Widest(TriangleMesh trunk, float x, float sign) {
+    private static float Widest(FineTriangleMesh trunk, float x, float sign) {
         var widest = 0f;
         for (var y = -PatientBody.HalfHeight; y < PatientBody.HalfHeight; y += Sample) {
             var hit = trunk.IntersectRay(new Vector3(x, y, sign * 0.5f), new Vector3(0, 0, -sign));
-            if (hit.Count > 0) {
-                widest = Mathf.Max(widest, sign * hit["position"].AsVector3().Z);
+            if (hit is { } side) {
+                widest = Mathf.Max(widest, sign * side.Position.Z);
             }
         }
         return widest;
@@ -318,8 +319,11 @@ public partial class Drape : MeshInstance3D {
     /// <summary>Height of the sheet at each grid point (<paramref name="across"/> gives its x and z): Offset over the
     /// skin of the trunk and legs, measured finer than the grid, falling away at <see cref="Fall"/> where the skin
     /// drops faster (down the flanks), never below the table. Each measured point holds the sheet up
-    /// over a sample around it, so it stays over sharp tops (toes, knees) between its grid points.</summary>
-    private static float[] Lay(TriangleMesh trunk, int columns, int rows, Func<int, int, Vector2> across, float up) {
+    /// over a sample around it, so it stays over sharp tops (toes, knees) between its grid points.
+    /// A top narrower than a sample (a toe's tip) can fall between the rays, so every corner of the skin's faces
+    /// (<paramref name="faces"/>) raises its sample too: a face is highest at a corner.</summary>
+    private static float[] Lay(
+        FineTriangleMesh trunk, List<Vector3> faces, int columns, int rows, Func<int, int, Vector2> across, float up) {
         var sampleColumns = Mathf.CeilToInt((ToX - FromX) / Sample) + 1;
         var sampleRows = Mathf.CeilToInt(MaxHalfWidth * 2f / Sample) + 1;
         // Heights are measured up from the sheet's side of the body, so a sheet on the back works the same.
@@ -329,8 +333,19 @@ public partial class Drape : MeshInstance3D {
             for (var i = 0; i < sampleColumns; i++) {
                 var origin = new Vector3(FromX + i * Sample, up * 0.5f, -MaxHalfWidth + j * Sample);
                 var hit = trunk.IntersectRay(origin, Vector3.Down * up);
-                skin[j * sampleColumns + i] = hit.Count > 0 ? up * hit["position"].AsVector3().Y + Offset : float.NegativeInfinity;
+                skin[j * sampleColumns + i] = hit is { } met ? up * met.Position.Y + Offset : float.NegativeInfinity;
                 top = Mathf.Max(top, skin[j * sampleColumns + i]);
+            }
+        }
+        foreach (var v in faces) {
+            var (i, j) = (Mathf.RoundToInt((v.X - FromX) / Sample), Mathf.RoundToInt((v.Z + MaxHalfWidth) / Sample));
+            if (i >= 0 && i < sampleColumns && j >= 0 && j < sampleRows) {
+                // As far down as the sheet falls from the corner to the sample's middle: a corner up a steep flank
+                // (the side of a knee) would otherwise hold the sheet up past it by as much as the flank rises there.
+                var off = new Vector2(v.X - (FromX + i * Sample), v.Z - (-MaxHalfWidth + j * Sample)).Length();
+                ref var at = ref skin[j * sampleColumns + i];
+                at = Mathf.Max(at, up * v.Y + Offset - (Fall * off));
+                top = Mathf.Max(top, at);
             }
         }
         var table = -PatientBody.HalfHeight + Offset;
@@ -342,7 +357,7 @@ public partial class Drape : MeshInstance3D {
                 var (si, sj) = (Mathf.RoundToInt((at.X - FromX) / Sample), Mathf.RoundToInt((at.Y + MaxHalfWidth) / Sample));
                 // Right under the point too: the samples around it are up to half a sample away.
                 var under = trunk.IntersectRay(new Vector3(at.X, up * 0.5f, at.Y), Vector3.Down * up);
-                var height = under.Count > 0 ? Mathf.Max(table, up * under["position"].AsVector3().Y + Offset) : table;
+                var height = under is { } met ? Mathf.Max(table, up * met.Position.Y + Offset) : table;
                 for (var b = Mathf.Max(sj - reach, 0); b <= Mathf.Min(sj + reach, sampleRows - 1); b++) {
                     for (var a = Mathf.Max(si - reach, 0); a <= Mathf.Min(si + reach, sampleColumns - 1); a++) {
                         var near = skin[b * sampleColumns + a];

@@ -99,7 +99,7 @@ public class BedBloodTest {
             return Task.CompletedTask;
         });
         await session.CaptureOblique("frame_shelf_drip", "blood spreads over the frame shelf between pads and runs down the frame, its edges fading out",
-            contact.Value, Vector3.Right, 0.28f);
+            contact.Value, Vector3.Back, 0.28f);
         await session.Finish(Allowance());
     }
 

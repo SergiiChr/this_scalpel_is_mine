@@ -27,9 +27,9 @@ public class SlicingTest {
     /// <summary>Pressing in place is held this long.</summary>
     private const float PressTime = 1f;
     /// <summary>A circle of skin cut out as a graft: its radius (meters), how far past its start the blade goes round
-    /// to close it (radians) and how fast the hand goes round (m/s).</summary>
+    /// to close it (radians: past the cut's shallow tapered start) and how fast the hand goes round (m/s).</summary>
     private const float GraftRadius = 0.015f;
-    private const float GraftOverlap = 0.4f;
+    private const float GraftOverlap = 1.2f;
     private const float GraftSpeed = 0.02f;
     /// <summary>How far (meters) the forceps lift the piece to show it pinched in place, and to take it off.</summary>
     private const float PinchLift = 0.004f;

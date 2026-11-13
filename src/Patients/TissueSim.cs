@@ -842,9 +842,13 @@ public sealed partial class TissueSim {
     }
 
     /// <summary>True while muscle cut near uv hasn't been stitched: skin closed over it would be under too much
-    /// tension.</summary>
-    public bool MuscleOpenNear(Vector2 uv, float radius) =>
-        _severed.Any(s => DepthOf(s) == TissueDepth.Muscle && MiddleUv(s).DistanceTo(uv) < radius);
+    /// tension.
+    /// Near is at least a cell: the muscle is cut only up to the last grid line the cut crosses, which can be most of a
+    /// cell short of where the skin cut ends.</summary>
+    public bool MuscleOpenNear(Vector2 uv, float radius) {
+        radius = Mathf.Max(radius, 1f / Mathf.Min(ResX, ResY));
+        return _severed.Any(s => DepthOf(s) == TissueDepth.Muscle && MiddleUv(s).DistanceTo(uv) < radius);
+    }
 
     /// <summary>True while fat cut near uv hasn't been closed (<see cref="CloseLayer"/>), with the muscle under it
     /// closed or uncut.</summary>

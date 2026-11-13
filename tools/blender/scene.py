@@ -141,6 +141,51 @@ def cut_below(obj: bpy.types.Object, axis: int, limit: float, above: bool = Fals
     return obj
 
 
+def keep(obj: bpy.types.Object, field: Callable[[NDArray[np.float64]], NDArray[np.float64]]) -> bpy.types.Object:
+    """Keeps the part of the mesh where field (game space) is positive, cut cleanly along its zero line.
+    Like bisect with a curved cut: each edge crossing zero is split where the field crosses it."""
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+
+    def values() -> NDArray[np.float64]:
+        bm.verts.index_update()
+        return field(np.array([(v.co.x, v.co.z, -v.co.y) for v in bm.verts]).reshape(-1, 3))
+
+    value = values()
+    crossing = [e for e in bm.edges if (value[e.verts[0].index] > 0.0) != (value[e.verts[1].index] > 0.0)]
+    cuts = []
+    for edge in crossing:
+        a, b = edge.verts
+        fac = value[a.index] / (value[a.index] - value[b.index])
+        cuts.append(bmesh.utils.edge_split(edge, a, fac)[1])
+    on_cut = set(cuts)
+    for face in {f for v in cuts for f in v.link_faces}:
+        ends = [v for v in face.verts if v in on_cut]
+        if len(ends) == 2:
+            bmesh.ops.connect_verts(bm, verts=ends)
+    # The new vertices lie on the zero line, where float error may put them on either side: keep them.
+    value = values()
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if value[v.index] <= 0.0 and v not in on_cut], context="VERTS")
+    bm.to_mesh(obj.data)
+    bm.free()
+    return obj
+
+
+def inflate(obj: bpy.types.Object, amount: Callable[[NDArray[np.float64]], NDArray[np.float64]]) -> bpy.types.Object:
+    """Pushes every vertex out along its normal by amount(points), a distance per game-space vertex position."""
+    mesh = obj.data
+    mesh.update()
+    co = np.empty(len(mesh.vertices) * 3)
+    normals = np.empty(len(mesh.vertices) * 3)
+    mesh.vertices.foreach_get("co", co)
+    mesh.vertices.foreach_get("normal", normals)
+    p = co.reshape(-1, 3)
+    p += normals.reshape(-1, 3) * amount(np.column_stack([p[:, 0], p[:, 2], -p[:, 1]]))[:, None]
+    mesh.vertices.foreach_set("co", p.ravel())
+    mesh.update()
+    return obj
+
+
 def rim(name: str, obj: bpy.types.Object, radius: float) -> bpy.types.Object:
     """Rolled edge following the open boundary of a mesh (glove opening, sleeve cuff)."""
     bm = bmesh.new()
@@ -199,6 +244,14 @@ def remesh(obj: bpy.types.Object, voxel: float, smooth: int = 0) -> bpy.types.Ob
         sm.iterations = smooth
         sm.use_only_smooth = True
         sm.smooth_type = "LENGTH_WEIGHTED"
+    return bake(obj)
+
+
+def subdivide(obj: bpy.types.Object, levels: int) -> bpy.types.Object:
+    """Splits every face into 4^levels without moving the surface, so it still lies exactly on the original."""
+    mod = obj.modifiers.new("Subdivide", "SUBSURF")
+    mod.subdivision_type = "SIMPLE"
+    mod.levels = levels
     return bake(obj)
 
 
@@ -449,6 +502,33 @@ def bind(mesh: bpy.types.Object, rig: bpy.types.Object) -> None:
     empty = [g.name for g in mesh.vertex_groups if g.index not in used]
     if len(empty) == len(mesh.vertex_groups):
         print(f"warning: no skin weights for {empty} on {mesh.name}")
+
+
+def weigh(mesh: bpy.types.Object, weights: dict[str, NDArray[np.float64]]) -> bpy.types.Object:
+    """Vertex groups from skin weights: one weight per vertex for each bone."""
+    for bone, weight in weights.items():
+        group = mesh.vertex_groups.new(name=bone)
+        for index in np.nonzero(weight > 0.0)[0]:
+            group.add([int(index)], float(weight[index]), "REPLACE")
+    return mesh
+
+
+def drop(mesh: bpy.types.Object, groups: Sequence[str], limit: float = 0.5) -> bpy.types.Object:
+    """Deletes the vertices weighted more than limit to the given vertex groups, together."""
+    indices = {mesh.vertex_groups[name].index for name in groups}
+    bm = bmesh.new()
+    bm.from_mesh(mesh.data)
+    deform = bm.verts.layers.deform.verify()
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if sum(w for g, w in v[deform].items() if g in indices) > limit], context="VERTS")
+    bm.to_mesh(mesh.data)
+    bm.free()
+    return mesh
+
+
+def skin(mesh: bpy.types.Object, rig: bpy.types.Object) -> None:
+    """Skins the mesh to the rig with the weights already in its vertex groups (see weigh())."""
+    mesh.parent = rig
+    mesh.modifiers.new("Rig", "ARMATURE").object = rig
 
 
 def reweight(mesh: bpy.types.Object, bone: str, weight: Callable[[NDArray[np.float64]], NDArray[np.float64]], giver: str) -> None:
