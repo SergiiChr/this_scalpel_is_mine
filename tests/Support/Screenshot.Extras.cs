@@ -47,7 +47,7 @@ public partial class Screenshot {
             body.ReleaseOrgan(top);
         }
         camera.Current = true;
-        var thigh = body.Root.ToGlobal(new Vector3(-0.75f, 0f, 0.1f));
+        var thigh = body.Root.ToGlobal(new Vector3(-0.4f, 0f, 0.11f));
         if (body.LimbRingAt(thigh + (Vector3.Up * 0.06f)) is { } ring) {
             var tourniquet = surgery.Tools.ByUid(surgery.Tools.Spawn("tourniquet", thigh))!;
             await Frames(2);

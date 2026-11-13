@@ -201,18 +201,18 @@ public class HandHoldTest {
 
     /// <summary>How far off the skin under it the drape's sheet is drawn where it runs over the fingers of
     /// <paramref name="hand"/>, as a share of how far off it the sheet was <paramref name="laid"/> (<see
-    /// cref="SheetVertices"/>), at each of its points within a finger's width of one.</summary>
+    /// cref="SheetVertices"/>), at each of its points within a finger's width of one. Fingers wrapping the thigh's
+    /// inner side reach over the gap between the legs: the sheet there has no skin under it to be pressed onto.</summary>
     private static float[] SheetUnder(Drape drape, Vector3[] laid, SurgeonHand hand) {
         var fingers = (string[])["Index", "Middle", "Ring", "Pinky"];
         var points = fingers.SelectMany(finger => hand.BonePoints(finger)).ToArray();
         return [.. SheetVertices(drape).Select(drape.ToGlobal).Zip(laid.Select(drape.ToGlobal))
             .Where(pair => points.Any(point => point.Position.Y < pair.Second.Y
                 && new Vector2(pair.First.X - point.Position.X, pair.First.Z - point.Position.Z).Length() < point.Radius))
-            .Select(pair => {
-                var skin = Rays.Cast(drape, pair.Second + Vector3.Up * 0.01f, pair.Second + Vector3.Down * 0.3f,
-                    PatientBody.SurfaceLayer)!.Value.Position.Y;
-                return (pair.First.Y - skin) / (pair.Second.Y - skin);
-            })];
+            .Select(pair => (pair, skin: Rays.Cast(drape, pair.Second + Vector3.Up * 0.01f, pair.Second + Vector3.Down * 0.3f,
+                PatientBody.SurfaceLayer)?.Position.Y))
+            .Where(over => over.skin is not null)
+            .Select(over => (over.pair.First.Y - over.skin!.Value) / (over.pair.Second.Y - over.skin.Value))];
     }
 
     /// <summary>How high the drape's sheet is (world) where it is drawn over <paramref name="at"/>: at its vertex
@@ -281,13 +281,18 @@ public class HandHoldTest {
         [.. hand.PalmUndersidePosed().Select(spot => SkinGap(hand, spot, ring))];
 
     /// <summary>How far (meters) <paramref name="spot"/> (in <paramref name="world"/>) is off the skin of the limb round <paramref name="ring"/>,
-    /// straight out from its middle line (negative: in it).</summary>
+    /// straight out from its middle line (negative: in it). Read as the grasp reads it: out from inside the limb to its
+    /// skin, then back in from a little past that for its outside (the gown over a hip). From further out, a spot past
+    /// the limb's side (a forearm lying beside the waist) would find the trunk's skin first.</summary>
     private static float SkinGap(Node3D world, Vector3 spot, LimbRing ring) {
         var middle = ring.Center + (ring.Axis * ring.Axis.Dot(spot - ring.Center));
         var outward = (spot - middle).Normalized();
-        return Rays.Cast(world, spot + (outward * 0.05f), middle, PatientBody.SurfaceLayer) is { } hit
-            ? (spot - hit.Position).Dot(outward)
-            : float.NegativeInfinity;
+        if (Rays.Cast(world, middle, middle + (outward * 0.2f), PatientBody.SurfaceLayer, inside: true) is not { } inner) {
+            return float.NegativeInfinity;
+        }
+        var past = inner.Position + (outward * 0.02f);
+        var skin = Rays.Cast(world, past, middle, PatientBody.SurfaceLayer)?.Position ?? inner.Position;
+        return (spot - skin).Dot(outward);
     }
 
     /// <summary>How far (meters) <paramref name="where"/> strays from where it starts over a second.</summary>

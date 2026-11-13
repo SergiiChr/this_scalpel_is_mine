@@ -247,6 +247,14 @@ def remesh(obj: bpy.types.Object, voxel: float, smooth: int = 0) -> bpy.types.Ob
     return bake(obj)
 
 
+def subdivide(obj: bpy.types.Object, levels: int) -> bpy.types.Object:
+    """Splits every face into 4^levels without moving the surface, so it still lies exactly on the original."""
+    mod = obj.modifiers.new("Subdivide", "SUBSURF")
+    mod.subdivision_type = "SIMPLE"
+    mod.levels = levels
+    return bake(obj)
+
+
 def box(name: str, center: Vec3, size: Vec3, rotation: Vec3 = (0.0, 0.0, 0.0)) -> bpy.types.Object:
     """A box in game space (full size, rotation in degrees around game X, Y, Z), mostly used as a boolean cutter."""
     bm = bmesh.new()
@@ -494,6 +502,33 @@ def bind(mesh: bpy.types.Object, rig: bpy.types.Object) -> None:
     empty = [g.name for g in mesh.vertex_groups if g.index not in used]
     if len(empty) == len(mesh.vertex_groups):
         print(f"warning: no skin weights for {empty} on {mesh.name}")
+
+
+def weigh(mesh: bpy.types.Object, weights: dict[str, NDArray[np.float64]]) -> bpy.types.Object:
+    """Vertex groups from skin weights: one weight per vertex for each bone."""
+    for bone, weight in weights.items():
+        group = mesh.vertex_groups.new(name=bone)
+        for index in np.nonzero(weight > 0.0)[0]:
+            group.add([int(index)], float(weight[index]), "REPLACE")
+    return mesh
+
+
+def drop(mesh: bpy.types.Object, groups: Sequence[str], limit: float = 0.5) -> bpy.types.Object:
+    """Deletes the vertices weighted more than limit to the given vertex groups, together."""
+    indices = {mesh.vertex_groups[name].index for name in groups}
+    bm = bmesh.new()
+    bm.from_mesh(mesh.data)
+    deform = bm.verts.layers.deform.verify()
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if sum(w for g, w in v[deform].items() if g in indices) > limit], context="VERTS")
+    bm.to_mesh(mesh.data)
+    bm.free()
+    return mesh
+
+
+def skin(mesh: bpy.types.Object, rig: bpy.types.Object) -> None:
+    """Skins the mesh to the rig with the weights already in its vertex groups (see weigh())."""
+    mesh.parent = rig
+    mesh.modifiers.new("Rig", "ARMATURE").object = rig
 
 
 def reweight(mesh: bpy.types.Object, bone: str, weight: Callable[[NDArray[np.float64]], NDArray[np.float64]], giver: str) -> None:

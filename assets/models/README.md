@@ -12,7 +12,7 @@ The Blender generator decimates to its budgets (`BUDGETS` in `tools/blender/__ma
 
 | Folder | Contents | Made by | Animated (bone or node names) |
 |---|---|---|---|
-| `patient/` | `body.glb` (one skinned mesh, the skeleton in rigid parts) | `tools/blender` | Bones: Torso, Chest, Neck, Head, Jaw, UpperArm/Forearm/Hand L/R, Thigh/Shin/Foot L/R. Parts: EyeL, EyeR, Lids, Skeleton&lt;Bone&gt; |
+| `patient/` | `body.glb` (one skinned mesh, the skeleton in rigid parts) | `tools/blender`, from MakeHuman's CC0 base body, targets and rig weights in `tools/blender/sources/makehuman_male.npz` (extracted by `tools/blender/makehuman.py`) | Bones: Torso, Chest, Neck, Head, Jaw, UpperArm/Forearm/Hand L/R, Thigh/Shin/Foot L/R. Parts: EyeL, EyeR, Lids, Skeleton&lt;Bone&gt; |
 | `surgeon/` | `glove` (skinned) | `tools/blender` | Bones: Hand, Index/Middle/Ring/Pinky/Thumb 1-3 |
 | `surgeon/` | `head.glb` (face skinned, cap and mask textures embedded) | delivered model, no generator in the repo | Bones: Neck, Head. Parts: Cap, Mask |
 | `surgeon/` | `body`, `upper_arm`, `forearm` | `tools/assetgen` | Torso, LegL/R |

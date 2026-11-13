@@ -1,8 +1,10 @@
-"""The patient: one continuous skinned body lying face up along +X (head at +X), +Z is the patient's left.
+"""The patient: MakeHuman's average young man (tools/blender/makehuman.py), lying face up along +X (head at +X), +Z his
+left, skinned to our rig with MakeHuman's own weights.
 
-Joint positions match the old part pivots (tools/assetgen/patient.py), so surgical sites and the animator line up.
-Bones: Torso, Chest, Neck, Head, Jaw, UpperArm/Forearm/Hand L/R, Thigh/Shin/Foot L/R.
-Rigid parts on the Head bone: Eyes, Irises, Lids (closed eyelids, shown while unconscious), Hair. Gown and Lips are skinned.
+Bones: Torso, Chest, Neck, Head, Jaw, UpperArm/Forearm/Hand L/R, Thigh/Shin/Foot L/R, each from one of MakeHuman's
+joints to the next.
+Rigid parts on the Head bone: Eyes, Irises, Lids (closed eyelids, shown while unconscious), Hair, Brows, UpperTeeth;
+on the Jaw: LowerTeeth, Tongue. Body, Gown and Lips are skinned.
 The skeleton (tools/blender/skeleton.py) is one rigid part per bone, named Skeleton<Bone>.
 """
 
@@ -12,146 +14,98 @@ import bpy
 import numpy as np
 from numpy.typing import NDArray
 
-from . import face, scene, skeleton
-from .hand import smooth_digit
-from .scene import Blob, Vec3, capsule, ellipsoid
+from . import face, makehuman, scene, skeleton
+from .makehuman import Man
+from .scene import Vec3
 
 SKIN = (0.8, 0.6, 0.5)
 GOWN = (0.5, 0.58, 0.55)
-HAIR = (0.12, 0.09, 0.07)
 
 
-def _mirror(p: Vec3, side: float) -> Vec3:
-    return (p[0], p[1], p[2] * side)
+def _bones(man: Man) -> list[tuple[str, Vec3, Vec3, str | None]]:
+    """(bone, head, tail, parent) from MakeHuman's joints. The jaw hinges where MakeHuman's own jaw bone does."""
 
+    def j(name: str) -> Vec3:
+        p = man.joints[name]
+        return (float(p[0]), float(p[1]), float(p[2]))
 
-def _torso() -> list[Blob]:
-    elements = [
-        # Pelvis and buttocks resting on the table.
-        ellipsoid((-0.33, -0.005, 0.0), (0.1, 0.092, 0.165)),
-        ellipsoid((-0.2, 0.005, 0.0), (0.11, 0.09, 0.15)),
-        # Belly, a little soft and rounded on top.
-        ellipsoid((-0.12, 0.028, 0.0), (0.13, 0.07, 0.125)),
-        # Ribcage and chest.
-        ellipsoid((0.1, 0.0, 0.0), (0.17, 0.1, 0.165)),
-        ellipsoid((0.28, -0.008, 0.0), (0.1, 0.085, 0.2)),
-        # Shoulder girdle: one solid mass from shoulder to shoulder that the arms grow out of.
-        ellipsoid((0.345, -0.012, 0.0), (0.07, 0.078, 0.228)),
-        # Trapezius into the neck.
-        ellipsoid((0.4, -0.025, 0.0), (0.06, 0.055, 0.11)),
-        capsule((0.4, -0.01, 0.0), (0.57, 0.012, 0.0), 0.049, 3.0),
-        # Clavicles.
-        capsule((0.36, 0.045, 0.03), (0.35, 0.03, 0.17), 0.01, 2.0),
-        capsule((0.36, 0.045, -0.03), (0.35, 0.03, -0.17), 0.01, 2.0),
+    bones: list[tuple[str, Vec3, Vec3, str | None]] = [
+        ("Torso", j("pelvis"), j("spine-2"), None),
+        ("Chest", j("spine-2"), j("neck"), "Torso"),
+        ("Neck", j("neck"), j("head"), "Chest"),
+        ("Head", j("head"), j("head-2"), "Neck"),
+        ("Jaw", j("mouth"), j("jaw"), "Head"),
     ]
-    for side in (1.0, -1.0):
-        elements += [
-            # Neck muscles from behind the ear down to the top of the breastbone, so the neck isn't a plain tube.
-            capsule(_mirror((0.575, 0.0, 0.042), side), (0.43, 0.035, 0.016 * side), 0.013, 2.5),
-            # Pectoral fold: the chest's lower edge rolls into the armpit instead of melting into the arm.
-            capsule(_mirror((0.2, 0.05, 0.1), side), _mirror((0.31, 0.02, 0.19), side), 0.022, 2.5),
-            ellipsoid(_mirror((0.22, 0.058, 0.075), side), (0.075, 0.035, 0.07)),
-            # Deltoid caps and the lats that run from the armpit down the back.
-            ellipsoid(_mirror((0.345, -0.006, 0.205), side), (0.058, 0.052, 0.042), 2.0),
-            ellipsoid(_mirror((0.2, -0.045, 0.15), side), (0.15, 0.055, 0.05), 2.0),
-            ellipsoid(_mirror((-0.33, -0.05, 0.07), side), (0.09, 0.065, 0.08)),
-            ellipsoid(_mirror((-0.24, 0.02, 0.13), side), (0.06, 0.05, 0.04)),
+    for s, m in (("L", "l"), ("R", "r")):
+        bones += [
+            (f"UpperArm{s}", j(f"{m}-shoulder"), j(f"{m}-elbow"), "Chest"),
+            (f"Forearm{s}", j(f"{m}-elbow"), j(f"{m}-hand"), f"UpperArm{s}"),
+            (f"Hand{s}", j(f"{m}-hand"), j(f"{m}-finger-3-4"), f"Forearm{s}"),
+            (f"Thigh{s}", j(f"{m}-upper-leg"), j(f"{m}-knee"), "Torso"),
+            (f"Shin{s}", j(f"{m}-knee"), j(f"{m}-ankle"), f"Thigh{s}"),
+            (f"Foot{s}", j(f"{m}-ankle"), j(f"{m}-foot-2"), f"Shin{s}"),
         ]
-    return elements
+    return bones
 
 
-def _arm(side: float) -> tuple[list[Blob], list[Blob], list[tuple[list[Vec3], list[float]]]]:
-    """(arm, palm, fingers) elements. Arms rest at the sides, palms down, thumbs toward the body.
-    Each finger is its own shell so they don't melt together."""
-    arm = [
-        capsule(_mirror((0.34, -0.006, 0.222), side), _mirror((0.13, -0.025, 0.25), side), 0.042, 3.0),
-        ellipsoid(_mirror((0.25, 0.012, 0.245), side), (0.075, 0.035, 0.036), 2.5),
-        capsule(_mirror((0.13, -0.025, 0.25), side), _mirror((-0.02, -0.03, 0.254), side), 0.038, 3.0),
-        capsule(_mirror((-0.02, -0.03, 0.254), side), _mirror((-0.14, -0.04, 0.258), side), 0.026, 3.0),
-        ellipsoid(_mirror((0.06, -0.022, 0.252), side), (0.07, 0.034, 0.042), 2.5),
-        # Point of the elbow, and the wrist bones standing out on either side of a slimmer wrist.
-        ellipsoid(_mirror((0.13, -0.05, 0.25), side), (0.018, 0.016, 0.018), 3.0),
-        ellipsoid(_mirror((-0.13, -0.036, 0.237), side), (0.009, 0.008, 0.008), 3.0),
-        ellipsoid(_mirror((-0.13, -0.036, 0.279), side), (0.009, 0.008, 0.008), 3.0),
-    ]
-    hand = [
-        ellipsoid(_mirror((-0.14, -0.042, 0.258), side), (0.022, 0.018, 0.03), 2.5),
-        ellipsoid(_mirror((-0.19, -0.048, 0.26), side), (0.048, 0.014, 0.035)),
-    ]
-    fingers = []
-    for i, (dz, length, spread) in enumerate(((-0.027, 0.075, -0.004), (-0.009, 0.082, -0.001), (0.009, 0.077, 0.002), (0.026, 0.062, 0.006))):
-        base = (-0.225, -0.046, 0.26 + dz)
-        mid = (base[0] - length * 0.55, base[1] - 0.006, base[2] + spread)
-        tip = (base[0] - length, base[1] - 0.016, base[2] + spread * 2.0)
-        r = 0.0084 - i * 0.0004 if i < 3 else 0.0072
-        root = (base[0] + 0.015, base[1], base[2])
-        fingers.append(([_mirror(p, side) for p in (root, base, mid, tip)], [r * 1.05, r, r * 0.9, r * 0.78]))
-    thumb = [_mirror(p, side) for p in ((-0.16, -0.046, 0.228), (-0.19, -0.05, 0.212), (-0.218, -0.053, 0.203))]
-    fingers.append((thumb, [0.011, 0.0098, 0.0085]))
-    return arm, hand, fingers
+# The navel and the groove above it down the middle of the belly: (center, half length along x, half width), and the
+# height of the belly round it at its ends along x.
+NAVEL: tuple[tuple[float, float], float, float] = ((0.135, 0.0), 0.045, 0.02)
+BELLY_Y = (0.1255, 0.1235)
 
 
-def _leg(side: float) -> list[Blob]:
-    return [
-        capsule(_mirror((-0.33, -0.015, 0.095), side), _mirror((-0.8, -0.03, 0.105), side), 0.075, 3.0),
-        ellipsoid(_mirror((-0.5, 0.0, 0.1), side), (0.16, 0.07, 0.078), 2.5),
-        ellipsoid(_mirror((-0.8, 0.02, 0.105), side), (0.03, 0.022, 0.03), 3.0),
-        capsule(_mirror((-0.8, -0.03, 0.105), side), _mirror((-1.19, -0.05, 0.11), side), 0.042, 3.0),
-        ellipsoid(_mirror((-0.93, -0.058, 0.107), side), (0.11, 0.045, 0.047), 2.5),
-        ellipsoid(_mirror((-1.19, -0.05, 0.11), side), (0.025, 0.025, 0.03), 3.0),
-        # Foot pointing up: heel on the table, toes to the ceiling.
-        ellipsoid(_mirror((-1.225, -0.06, 0.11), side), (0.03, 0.028, 0.028), 3.0),
-        capsule(_mirror((-1.225, -0.04, 0.11), side), _mirror((-1.245, 0.1, 0.114), side), 0.028, 3.0),
-        ellipsoid(_mirror((-1.24, 0.06, 0.114), side), (0.02, 0.06, 0.042), 2.5),
-        ellipsoid(_mirror((-1.248, 0.125, 0.116), side), (0.017, 0.02, 0.043), 3.0),
-    ]
+def _fill_navel(verts: NDArray[np.float64]) -> NDArray[np.float64]:
+    """Lifts the navel and the groove above it level with the belly round them. The belly's surgical site is centered
+    there and its simulated skin starts from the body's: a dent under it would sink the cuts and stitches across it."""
+    (x, z), length, width = NAVEL
+    p = verts.copy()
+    d = np.hypot((p[:, 0] - x) / length, (p[:, 2] - z) / width)
+    level = np.interp(p[:, 0], (x - length, x + length), BELLY_Y)
+    # Full height inside, easing into the belly over the outer third.
+    lift = np.clip((1.0 - d) / 0.3, 0.0, 1.0) * np.maximum(level - p[:, 1], 0.0)
+    p[:, 1] += np.where((d < 1.0) & (p[:, 1] > 0.1), lift, 0.0)
+    return p
 
 
-BONES: list[tuple[str, Vec3, Vec3, str | None]] = [
-    ("Torso", (-0.33, 0.0, 0.0), (0.05, 0.0, 0.0), None),
-    ("Chest", (0.05, 0.0, 0.0), (0.4, 0.0, 0.0), "Torso"),
-    ("Neck", (0.42, 0.0, 0.0), (0.58, 0.01, 0.0), "Chest"),
-    ("Head", (0.58, 0.01, 0.0), (0.79, 0.01, 0.0), "Neck"),
-    ("Jaw", (0.64, 0.035, 0.0), (0.575, 0.075, 0.0), "Head"),
-]
-for _side, _s in ((1.0, "L"), (-1.0, "R")):
-    BONES += [
-        (f"UpperArm{_s}", _mirror((0.38, 0.0, 0.215), _side), _mirror((0.13, -0.025, 0.25), _side), "Chest"),
-        (f"Forearm{_s}", _mirror((0.13, -0.025, 0.25), _side), _mirror((-0.14, -0.04, 0.258), _side), f"UpperArm{_s}"),
-        (f"Hand{_s}", _mirror((-0.14, -0.04, 0.258), _side), _mirror((-0.28, -0.055, 0.26), _side), f"Forearm{_s}"),
-        (f"Thigh{_s}", _mirror((-0.36, -0.015, 0.1), _side), _mirror((-0.8, -0.03, 0.105), _side), "Torso"),
-        (f"Shin{_s}", _mirror((-0.8, -0.03, 0.105), _side), _mirror((-1.2, -0.05, 0.11), _side), f"Thigh{_s}"),
-        (f"Foot{_s}", _mirror((-1.2, -0.05, 0.11), _side), _mirror((-1.245, 0.11, 0.114), _side), f"Shin{_s}"),
-    ]
+def _body(man: Man) -> bpy.types.Object:
+    body = scene.mesh_object("Body", _fill_navel(man.verts).tolist(), man.quads.tolist())
+    scene.weigh(body, man.weights)
+    return scene.finish(body, scene.material("skin", SKIN, roughness=0.55, subsurface=0.2))
 
 
-def _gown(body: bpy.types.Object) -> bpy.types.Object:
-    """Hospital gown shorts: the hips and upper thighs of the body, puffed out a few millimetres."""
+def _gown(body: bpy.types.Object, man: Man) -> bpy.types.Object:
+    """Hospital gown shorts: the hips and upper thighs of the body, puffed out a few millimetres. Skinned like the body."""
     gown = bpy.data.objects.new("Gown", body.data.copy())
     scene.link(gown)
-    # Clean plane cuts make straight hems: at the waist, across the thighs, and inside the arms lying beside the hips.
-    scene.bisect(gown, (-0.58, 0.0, 0.0), (1.0, 0.0, 0.0))
-    scene.bisect(gown, (-0.12, 0.0, 0.0), (-1.0, 0.0, 0.0))
-    scene.bisect(gown, (0.0, 0.0, 0.185), (0.0, 0.0, -1.0))
-    scene.bisect(gown, (0.0, 0.0, -0.185), (0.0, 0.0, 1.0))
+    hip = man.joints["l-upper-leg"]
+    # Clean plane cuts make straight hems at the waist and across the thighs. The hands lying beside the hips aren't
+    # part of it.
+    scene.bisect(gown, (float(hip[0]) - GOWN_HEM, 0.0, 0.0), (1.0, 0.0, 0.0))
+    scene.bisect(gown, (float(hip[0]) + GOWN_WAIST, 0.0, 0.0), (-1.0, 0.0, 0.0))
+    scene.drop(gown, [f"{bone}{s}" for bone in ("UpperArm", "Forearm", "Hand") for s in "LR"])
     mod = gown.modifiers.new("Puff", "DISPLACE")
     mod.strength = 0.006
     mod.mid_level = 0.0
     return scene.finish(scene.bake(gown), scene.material("gown", GOWN, roughness=0.9))
 
 
+# The gown's waistband and hems from the hip joints, in metres along the body. The waistband sits low, under the
+# belly's surgical site.
+GOWN_WAIST, GOWN_HEM = 0.025, 0.15
+
 # The hairline as the lowest head-axis x the hair reaches, by angle around the head from the face (0) to the back
 # of the head (180 degrees). The front edge sits 6.5 cm above the brow (the male average), recedes a little at the
 # temples, drops at the temporal points into sideburns that end level with the tragus, and the nape ends level with
 # the earlobes.
 HAIRLINE_ANGLE = (0.0, 22.0, 36.0, 48.0, 58.0, 67.0, 71.0, 74.0, 80.0, 90.0, 130.0, 180.0)
-HAIRLINE_X = (0.755, 0.756, 0.763, 0.748, 0.728, 0.714, 0.696, 0.666, 0.662, 0.64, 0.632, 0.626)
-HEAD_AXIS_Y = -0.005
+HAIRLINE_X = (0.768, 0.769, 0.776, 0.763, 0.747, 0.735, 0.719, 0.689, 0.685, 0.663, 0.655, 0.649)
+# The head's long axis, halfway between the forehead and the back of the head.
+HEAD_AXIS_Y = 0.043
 # Hair stands about 9 mm on top, a crew cut, and 4 mm on the clipped sides and back, thinning to nothing over the
-# last centimetre before the hairline so its edge lies flat on the skin.
-HAIR_TOP, HAIR_SIDES, HAIR_FADE = 0.009, 0.004, 0.01
+# last centimetre before the hairline so its edge lies flat on the skin. The top starts 6 cm below the crown.
+HAIR_TOP, HAIR_SIDES, HAIR_FADE, HAIR_TOP_X = 0.009, 0.004, 0.01, 0.743
 # The hair leaves a gap around each ear (ear center, half sizes along x and y).
-EAR_GAP: tuple[tuple[float, float], tuple[float, float]] = ((0.671, -0.004), (0.038, 0.027))
+EAR_GAP: tuple[tuple[float, float], tuple[float, float]] = ((0.693, 0.03), (0.047, 0.026))
 
 
 def _above_hairline(p: NDArray[np.float64]) -> NDArray[np.float64]:
@@ -166,7 +120,7 @@ def _above_hairline(p: NDArray[np.float64]) -> NDArray[np.float64]:
 
 
 def _hair_depth(p: NDArray[np.float64]) -> NDArray[np.float64]:
-    top = np.clip((p[:, 0] - 0.72) / 0.05, 0.0, 1.0)
+    top = np.clip((p[:, 0] - HAIR_TOP_X) / 0.05, 0.0, 1.0)
     fade = np.clip(_above_hairline(p) / HAIR_FADE, 0.0, 1.0)
     return (HAIR_SIDES + (HAIR_TOP - HAIR_SIDES) * top * top) * (0.04 + 0.96 * fade * fade * (3.0 - 2.0 * fade))
 
@@ -175,16 +129,18 @@ def _hair(body: bpy.types.Object) -> bpy.types.Object:
     """Short hair grown out of the scalp: one surface lifted off the skin, thick on top and fading out at the hairline."""
     hair = bpy.data.objects.new("Hair", body.data.copy())
     scene.link(hair)
-    scene.cut_below(hair, 0, 0.6)
+    hair.vertex_groups.clear()
+    scene.cut_below(hair, 0, 0.62)
+    # The scalp's quads are a centimetre across: split them, so the hairline is cut smoothly.
+    hair = scene.subdivide(hair, 2)
     scene.keep(hair, _above_hairline)
     hair = scene.displace(scene.inflate(hair, _hair_depth), 0.0009, 0.003, detail=3, seed=17)
-    return scene.finish(hair, scene.material("hair", HAIR, roughness=0.8))
+    return scene.finish(hair, scene.material("hair", face.HAIR, roughness=0.8))
 
 
-# Triangles per part, about 50k in all. The face and hands get most of the body's share because the decimation
-# keeps curvature, and the player looks at them from up close.
+# Triangles per part, about 42k in all. MakeHuman's body is used as it comes: about 27k triangles.
 BUDGETS = {
-    "Body": 34000,
+    "Body": 27000,
     "Gown": 5000,
     "Hair": 3000,
     "Lips": 600,
@@ -199,43 +155,24 @@ BUDGETS = {
 
 
 def build() -> bpy.types.Object:
-    shells = [scene.blobs("Torso", _torso(), resolution=0.006), scene.blobs("Head", face.base(), resolution=0.0015)]
-    shells += face.ear_shells() + face.eyelid_shells() + face.mouth_shells() + face.lip_shells()
-    for side in (1.0, -1.0):
-        arm, hand, fingers = _arm(side)
-        shells += [
-            scene.blobs(f"Arm{side}", arm, resolution=0.004),
-            scene.blobs(f"Hand{side}", hand, resolution=0.002),
-            scene.blobs(f"Leg{side}", _leg(side), resolution=0.005),
-        ]
-        shells += [smooth_digit(f"Finger{side}{i}", points, radii) for i, (points, radii) in enumerate(fingers)]
-    # Fine enough for the face; the sculpt strokes and the decimation keep detail where it matters.
-    body = scene.remesh(scene.join("Body", *shells), voxel=0.0012, smooth=12)
-    body = scene.sculpt(body, face.strokes())
-    scene.finish(body, scene.material("skin", SKIN, roughness=0.55, subsurface=0.2))
-    # Cut the canals and the mouth while the mesh is still dense, so their edges stay clean after decimating.
-    for canal in face.ear_canals():
-        body = scene.subtract(body, canal, fast=True)
-    body = face.carve_mouth(body)
-    # The hair grows from the dense scalp, so its hairline stays smooth.
+    man = makehuman.load()
+    body = _body(man)
     hair = _hair(body)
     lips = face.lips(body)
-    body = scene.fit(body, BUDGETS["Body"])
-    gown = _gown(body)
-    brows = face.eyebrows(body)
-    eye_l, eye_r, lids = face.eyes()
-    upper_teeth, lower_teeth, tongue = face.teeth_and_tongue()
-    for part in (gown, hair, lips, brows, eye_l, eye_r, lids, upper_teeth, lower_teeth, tongue):
+    gown = _gown(body, man)
+    brows = face.eyebrows(man, body)
+    # After the copies, so only the body has the mouth's material.
+    face.line_mouth(man, body)
+    eye_l, eye_r, lids = face.eyes(man)
+    upper_teeth, lower_teeth, tongue = face.teeth_and_tongue(man)
+    for part in (body, gown, hair, lips, brows, eye_l, eye_r, lids, upper_teeth, lower_teeth, tongue):
         scene.fit(part, BUDGETS[part.name])
-    bones = skeleton.build()
+    bones = skeleton.build(man)
     scene.clean()
 
-    rig = scene.armature("PatientRig", BONES)
-    scene.bind(body, rig)
-    scene.bind(gown, rig)
-    scene.bind(lips, rig)
-    for part in (body, lips):
-        scene.reweight(part, "Jaw", face.jaw_weight, "Head")
+    rig = scene.armature("PatientRig", _bones(man))
+    for part in (body, gown, lips):
+        scene.skin(part, rig)
     for part in (hair, brows, eye_l, eye_r, lids, upper_teeth):
         scene.attach(part, rig, "Head")
     for part in (lower_teeth, tongue):

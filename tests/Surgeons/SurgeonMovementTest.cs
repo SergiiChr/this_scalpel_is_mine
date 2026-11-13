@@ -369,7 +369,7 @@ public class SurgeonMovementTest {
     /// than standing.
     /// </summary>
     [TestCase("close", 0.1f)]
-    [TestCase("edge", 0.35f)]
+    [TestCase("edge", 0.26f)]
     public async Task LeaningInCentersTheAimedSpot(string name, float toward) {
         var driver = await Begin();
         var me = driver.Me;

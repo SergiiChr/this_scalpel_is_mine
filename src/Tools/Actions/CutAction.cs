@@ -72,6 +72,7 @@ public sealed class CutAction : ToolAction {
         }
         var motion = fresh ? Vector3.Zero : surfaceContact - use.LastCutContact;
         var moved = !fresh && body.WorldToUv(use.LastCutContact).DistanceTo(body.WorldToUv(surfaceContact)) > 0.003f;
+        var tilted = false;
         if (moved) {
             var along = motion * new Vector3(1, 0, 1);
             var aligned = Mathf.Abs(along.Normalized().Dot(direction)) >= ToolActions.AlongBlade;
@@ -85,20 +86,27 @@ public sealed class CutAction : ToolAction {
                 step.Surgery.Sound(level >= 3 ? "cut_deep" : "cut_skin", step.Tip);
             } else if (!aligned) {
                 // Dragged sideways: the next stroke starts here.
-                // Lowering or tilting can move the footprint sideways without being a sideways drag.
+                // Lowering or tilting can move the footprint sideways without being a sideways drag (rolling the blade
+                // round a curve on a sloping side): the cut then carries on from where it got to.
                 var grip = tool.GlobalPosition - use.LastCutGrip;
                 var across = grip.Slide(Vector3.Up);
                 if (body.WorldToUv(tool.GlobalPosition).DistanceTo(body.WorldToUv(use.LastCutGrip)) > 0.003f
                     && across.LengthSquared() > grip.Y * grip.Y
-                    && Mathf.Abs(across.Normalized().Dot(direction)) < ToolActions.AlongBlade) { use.Stroke++; }
+                    && Mathf.Abs(across.Normalized().Dot(direction)) < ToolActions.AlongBlade) {
+                    use.Stroke++;
+                } else {
+                    tilted = true;
+                }
             }
         }
         if (fresh || moved) {
             var forward = motion.Dot(direction) >= 0f;
-            use.LastUv = fresh ? (from + to) * 0.5f : forward ? to : from;
-            use.LastCutEnd = fresh || span is not { } reached
-                ? surfaceContact
-                : body.Site.ToGlobal(forward ? reached.To : reached.From);
+            if (!tilted) {
+                use.LastUv = fresh ? (from + to) * 0.5f : forward ? to : from;
+                use.LastCutEnd = fresh || span is not { } reached
+                    ? surfaceContact
+                    : body.Site.ToGlobal(forward ? reached.To : reached.From);
+            }
             use.LastCutContact = surfaceContact;
             use.LastCutGrip = tool.GlobalPosition;
         }

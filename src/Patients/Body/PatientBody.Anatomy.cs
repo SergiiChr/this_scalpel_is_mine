@@ -261,7 +261,9 @@ public partial class PatientBody {
             if (away.Length() >= reach) {
                 continue;
             }
-            uv = (target + (away.Length() > 0.001f ? away.Normalized() : Vector2.Right) * reach).Clamp(Vector2.One * 0.1f, Vector2.One * 0.9f);
+            // Kept over the site, its box too as far as the site's room allows.
+            var margin = (new Vector2(box.X / SiteSize.X, box.Z / SiteSize.Y) * 0.5f).Clamp(Vector2.One * 0.1f, Vector2.One * 0.5f);
+            uv = (target + (away.Length() > 0.001f ? away.Normalized() : Vector2.Right) * reach).Clamp(margin, Vector2.One - margin);
             organ.Position = organ.Position with { X = (uv.X - 0.5f) * SiteSize.X, Z = (uv.Y - 0.5f) * SiteSize.Y };
             organ.RestPosition = organ.Position;
             _organLast[index] = organ.Position;
@@ -438,10 +440,8 @@ public partial class PatientBody {
             for (var j = 0; j < BoneRows; j++) {
                 var z = (j / (BoneRows - 1f) - 0.5f) * SiteSize.Y;
                 var entry = part.Mesh.IntersectRay(new Vector3(x, RayStart, z), Vector3.Down);
-                var exit = entry.Count > 0
-                    ? part.Mesh.IntersectRay(entry["position"].AsVector3() + Vector3.Down * 0.0005f, Vector3.Down)
-                    : [];
-                if (exit.Count == 0) {
+                var exit = entry is { } top ? part.Mesh.IntersectRay(top.Position + Vector3.Down * 0.0005f, Vector3.Down) : null;
+                if (entry is not { } skin || exit is not { } under) {
                     inside = false;
                     continue;
                 }
@@ -449,7 +449,7 @@ public partial class PatientBody {
                     runs.Add([]);
                 }
                 inside = true;
-                runs[^1].Add((z, entry["position"].AsVector3().Y, exit["position"].AsVector3().Y));
+                runs[^1].Add((z, skin.Position.Y, under.Position.Y));
             }
             foreach (var run in runs) {
                 var center = run[run.Count / 2];
@@ -560,9 +560,9 @@ public partial class PatientBody {
 
     /// <summary>Blood filling the cavity bowl, level 0..1. The surface only covers the part of the bowl that is under it
     /// and still under the skin, so it never shows outside the body. Rebuilt only when the level moves a millimeter or
-    /// so.</summary>
+    /// so. Full, it comes up to a little more than a centimeter under the skin over the middle of a flat belly.</summary>
     public void SetCavityBlood(float level) {
-        var height = CavityFloor(new Vector2(0.5f, 0.5f)) + 0.002f + Mathf.Clamp(level, 0f, 1f) * CavityDepth() * 0.85f;
+        var height = CavityFloor(new Vector2(0.5f, 0.5f)) + 0.002f + Mathf.Clamp(level, 0f, 1f) * CavityDepth() * 0.9f;
         CavityBlood.Visible = level > 0.01f;
         if (!CavityBlood.Visible || Mathf.Abs(height - _poolHeight) < 0.0015f) {
             return;

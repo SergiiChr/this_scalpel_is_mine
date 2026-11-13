@@ -13,7 +13,7 @@ public partial class Surgeon {
     private const float OpeningWrap = -1f;
     /// <summary>How far under the drape (meters) a hand reaches for the skin it holds: down from where the sheet tents
     /// over the toes to the top of the foot.</summary>
-    private const float UnderDrape = 0.15f;
+    private const float UnderDrape = 0.17f;
     /// <summary>Skin facing further along a limb than this (the cosine) isn't on its round, for a hand to grasp.
     /// </summary>
     private const float AlongLimb = 0.5f;
