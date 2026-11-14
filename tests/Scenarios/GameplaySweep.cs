@@ -217,7 +217,7 @@ internal sealed partial class GameplaySweep {
             return;
         }
         // Straight above the thigh, whichever way up the patient lies.
-        var above = Body.Root.ToGlobal(new Vector3(-0.75f, 0f, 0.1f)) + (Vector3.Up * 0.4f);
+        var above = Body.Root.ToGlobal(new Vector3(-0.4f, 0f, 0.11f)) + (Vector3.Up * 0.4f);
         if (RayDown(Patient, above, 0.8f, PatientBody.SurfaceLayer) is not { } top) {
             Fail("no thigh to put the tourniquet on");
             return;

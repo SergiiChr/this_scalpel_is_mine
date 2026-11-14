@@ -165,23 +165,28 @@ public partial class SurgeryDriver {
     /// <summary>
     /// Staples <paramref name="wound"/> shut with the stapler in the active hand: centered on the cut every
     /// <paramref name="spacing"/> meters along it (the first and last a little in from its ends), legs square across it
-    /// (as C/V turn a blade along it), clicked at each spot where the cut doesn't already look closed. Where the muscle
-    /// under it is still open the staples go into the muscle, so it goes along again for the skin, up to <paramref name="rounds"/> times while it isn't closed. Opt-in progress captures show the first staple; callers otherwise capture their unique result.
+    /// (as C/V turn a blade along it), clicked at each spot where the wound doesn't already count as closed. Where the
+    /// muscle under it is still open the staples go into the muscle: each round goes along for those first, as a skin
+    /// staple beside one would pull the skin shut over it, then along again for the skin, up to
+    /// <paramref name="rounds"/> times while it isn't closed. Opt-in progress captures show the first staple; callers otherwise capture their
+    /// unique result.
     /// Returns how many staples went in.
     /// </summary>
     public async Task<int> PlayerStaples(Wound wound, float spacing = TissueSim.StitchReach, int rounds = 4, bool captureProgress = false) {
         var stapler = Me.HeldTool(Me.Active)!;
         var step = spacing / ((wound.Points[^1] - wound.Points[0]).Normalized() * Body.SiteSize).Length();
         var placed = 0;
-        for (var round = 0; round < rounds && wound.Closure < 0.99f; round++) {
+        for (var pass = 0; pass < rounds * 2 && wound.Closure < 0.99f; pass++) {
+            var muscleOnly = pass % 2 == 0;
             for (var i = 0; i <= Mathf.FloorToInt(wound.LengthUv / step); i++) {
                 // A few millimeters in from the ends: aimed right at its end the stapler can land just past the cut.
                 var along = Mathf.Clamp(i * step, step * 0.6f, wound.LengthUv - (step * 0.6f));
-                // Where the cut already looks closed there's nothing to staple.
-                if (Body.Tissue.ClosedAt(BesideWound(wound, along, 0f))) {
+                // Where the wound already counts as closed there's nothing to staple.
+                var spot = BesideWound(wound, along, 0f);
+                if (wound.Bins[wound.BinAt(spot)] >= 1f || (muscleOnly && !Body.Tissue.MuscleOpenNear(spot, Patient.MuscleReach))) {
                     continue;
                 }
-                var at = SitePoint(BesideWound(wound, along, 0f));
+                var at = SitePoint(spot);
                 var cut = SitePoint(BesideWound(wound, along + (step * 0.5f), 0f))
                     - SitePoint(BesideWound(wound, along - (step * 0.5f), 0f));
                 await WithinReach(at);
@@ -358,10 +363,22 @@ public partial class SurgeryDriver {
                 continue;
             }
             var at = SitePoint(spot.Value);
-            await PlayerReaches(at);
-            // As a player does, nudged until the needle is where it was aimed: a layer's wall is a narrow band to touch.
-            for (var nudge = 0; nudge < 4 && (Tip(Me.Hands[Me.Active]) - at).Slide(Vector3.Up).Length() > 0.0005f; nudge++) {
-                await PlayerReaches(at + (at - Tip(Me.Hands[Me.Active])).Slide(Vector3.Up) * 0.8f);
+            async Task Aim() {
+                await PlayerReaches(at);
+                // As a player does, nudged until the needle is where it was aimed: a layer's wall is a narrow band to touch.
+                for (var nudge = 0; nudge < 4 && (Tip(Me.Hands[Me.Active]) - at).Slide(Vector3.Up).Length() > 0.0005f; nudge++) {
+                    await PlayerReaches(at + (at - Tip(Me.Hands[Me.Active])).Slide(Vector3.Up) * 0.8f);
+                }
+            }
+            await Aim();
+            // The layer can draw back from under the needle while the hand gets there, the thread still pulling the
+            // tissue in near a cut's end where its band is narrow: looked at again, as a player would.
+            for (var look = 0; look < 2 && Body.ExposedUnder(Tip(Me.Hands[Me.Active]))?.Tissue.Layer != layer; look++) {
+                if (await FindSpot() is not { } again) {
+                    break;
+                }
+                at = SitePoint(again);
+                await Aim();
             }
             if ((Tip(Me.Hands[Me.Active]) - at).Slide(Vector3.Up).Length() > 0.004f) {
                 Note($"needle cannot reach intended puncture within 4 mm: aim {spot}, tip {Body.WorldToUv(Tip(Me.Hands[Me.Active]))}, "

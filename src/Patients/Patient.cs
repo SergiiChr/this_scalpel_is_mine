@@ -82,7 +82,7 @@ public partial class Patient : Node3D {
     /// <summary>Blood (ml) in the cavity from which it spills over open wounds onto the skin.</summary>
     public const float CavitySpillMl = 280f;
     /// <summary>Where a line set before the surgery goes in: the back of the right hand, in body space.</summary>
-    public static readonly Vector3 PreopIvPoint = new(-0.2f, 0.03f, 0.26f);
+    public static readonly Vector3 PreopIvPoint = new(-0.11f, 0.01f, 0.24f);
 
     /// <summary>The coarse grids over the site that count burned skin treated.</summary>
     public enum BurnGrid { Debrided, Grafted }

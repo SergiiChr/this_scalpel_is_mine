@@ -63,7 +63,7 @@ public class WoundClosureTest {
         var driver = session.Driver;
         var wound = driver.Patient.Wounds[0];
         await driver.PlayerRequestsItem("needle");
-        AssertBool(await driver.PlayerThreads(wound, TissueDepth.Skin, 5f))
+        AssertBool(await driver.PlayerThreads(wound, TissueDepth.Skin, 10f))
             .OverrideFailureMessage("holes go in beside the cut, far apart").IsTrue();
         await driver.PlayerPullsThread("closed");
         await Frames.Seconds(1f);

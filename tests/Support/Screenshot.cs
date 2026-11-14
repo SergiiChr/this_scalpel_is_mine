@@ -276,8 +276,8 @@ public partial class Screenshot : Node {
         surgery.Hud.ClearLensBlood();
         // Hands working over the thighs: nothing may sink into the legs or the table.
         var spot = me.GlobalPosition;
-        me.GlobalPosition = patient.GlobalPosition + new Vector3(-0.45f, -Room.TableHeight, 0.62f);
-        var legs = patient.GlobalPosition + new Vector3(-0.5f, 0f, 0f);
+        me.GlobalPosition = patient.GlobalPosition + new Vector3(-0.15f, -Room.TableHeight, 0.62f);
+        var legs = patient.GlobalPosition + new Vector3(-0.2f, 0f, 0f);
         me.Hands[1].LocalTarget = me.ToLocal(legs + new Vector3(0.05f, 0.05f, 0.09f));
         me.Hands[0].LocalTarget = me.ToLocal(legs + new Vector3(-0.08f, 0.05f, -0.05f));
         me.Pitch = -0.9f;
@@ -304,7 +304,7 @@ public partial class Screenshot : Node {
     private async Task PaperViews(Surgery surgery) {
         if (surgery.Room.Xray is { } cart) {
             // Beside the table, its front toward it: the tube head over the patient's middle.
-            cart.GlobalPosition = surgery.Patient.GlobalPosition + new Vector3(-0.3f, -Room.TableHeight, 0.84f);
+            cart.GlobalPosition = surgery.Patient.GlobalPosition + new Vector3(-0.05f, -Room.TableHeight, 0.84f);
             cart.GlobalRotation = Vector3.Zero;
             var camera = NewCamera();
             camera.GlobalPosition = cart.ToGlobal(new Vector3(-1.7f, 1.5f, 0.9f));

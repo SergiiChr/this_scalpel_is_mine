@@ -157,13 +157,14 @@ public partial class PatientBody : Node3D {
         var skin = Materials.BodySkin(tone);
         // The gown gets the same carve-capable material, or it would show through the surgical site on the hips.
         var gown = Materials.BodySkin(Materials.PatientGown);
-        _bodyMaterials.AddRange([skin, gown]);
+        var lips = Materials.BodySkin(Materials.LipTone(tone));
+        _bodyMaterials.AddRange([skin, gown, lips]);
         foreach (var material in _bodyMaterials) {
             Materials.SetSiteMaps(material, WoundMap.Texture(WoundMap.Layer.Wounds), WoundMap.Texture(WoundMap.Layer.Fluids),
                 WoundMap.Texture(WoundMap.Layer.Bleeds));
         }
         var model = ModelSlot.Instantiate("patient", "body", _bodyRoot,
-            new Dictionary<string, Material> { ["skin"] = skin, ["gown"] = gown });
+            new Dictionary<string, Material> { ["skin"] = skin, ["gown"] = gown, ["lips"] = lips });
         _skinModel = (Node3D)model.FindChild("Body", true, false);
         BuildXrayLayer(model);
         AddChild(Animator);
@@ -571,7 +572,15 @@ public partial class PatientBody : Node3D {
         if (hits.Count < 8) {
             return null;
         }
-        var center = hits.Aggregate(Vector3.Zero, (sum, hit) => sum + hit) / hits.Count;
+        // The middle of the box around the hits, not their average: a limb's skin isn't round about where the rays
+        // start, and the average leans toward the near side, where the hits are close together.
+        var up = _bodyRoot.GlobalBasis.Y.Normalized();
+        var side = axis.Cross(up);
+        float Middle(Vector3 direction) {
+            var along = hits.Select(hit => direction.Dot(hit - inside)).ToList();
+            return (along.Min() + along.Max()) / 2f;
+        }
+        var center = inside + (up * Middle(up)) + (side * Middle(side));
         var radius = hits.Max(hit => (hit - center).Slide(axis).Length());
         // Only when p is right at this limb's skin, not somewhere above it.
         return (p - center).Slide(axis).Length() > radius + 0.03f ? null : new LimbRing(center, axis, radius);
@@ -652,14 +661,14 @@ public partial class PatientBody : Node3D {
 
     private void BuildColliders() {
         var parts = new (string Part, Vector3 Size, Vector3 Position)[] {
-            ("torso", new(0.62f, 0.22f, 0.38f), new(0.12f, 0, 0)),
-            ("pelvis", new(0.22f, 0.2f, 0.36f), new(-0.3f, 0, 0)),
-            ("neck", new(0.14f, 0.1f, 0.1f), new(0.5f, 0, 0)),
-            ("head", new(0.2f, 0.2f, 0.2f), new(0.67f, 0.03f, 0)),
-            ("arm_right", new(0.7f, 0.09f, 0.09f), new(0.12f, -0.02f, 0.25f)),
-            ("arm_left", new(0.7f, 0.09f, 0.09f), new(0.12f, -0.02f, -0.25f)),
-            ("leg_right", new(0.95f, 0.14f, 0.14f), new(-0.8f, -0.02f, 0.1f)),
-            ("leg_left", new(0.95f, 0.14f, 0.14f), new(-0.8f, -0.02f, -0.1f)),
+            ("torso", new(0.5f, 0.23f, 0.32f), new(0.25f, 0.01f, 0)),
+            ("pelvis", new(0.13f, 0.22f, 0.36f), new(-0.065f, 0, 0)),
+            ("neck", new(0.1f, 0.11f, 0.11f), new(0.55f, 0.02f, 0)),
+            ("head", new(0.23f, 0.22f, 0.17f), new(0.693f, 0.053f, 0)),
+            ("arm_right", new(0.71f, 0.08f, 0.09f), new(0.1f, 0, 0.222f)),
+            ("arm_left", new(0.71f, 0.08f, 0.09f), new(0.1f, 0, -0.222f)),
+            ("leg_right", new(0.9f, 0.16f, 0.15f), new(-0.5f, 0, 0.11f)),
+            ("leg_left", new(0.9f, 0.16f, 0.15f), new(-0.5f, 0, -0.11f)),
         };
         foreach (var (part, size, position) in parts) {
             var body = new BodyPart {
@@ -691,7 +700,8 @@ public partial class PatientBody : Node3D {
             || model.FindChildren("*", "Skeleton3D", true, false).FirstOrDefault() is not Skeleton3D skeleton) {
             return;
         }
-        var faces = skin.Mesh.GenerateTriangleMesh();
+        var faces = new FineTriangleMesh();
+        faces.CreateFromFaces(skin.Mesh.GetFaces());
         var toSkin = skin.GlobalTransform.AffineInverse();
         var up = _bodyRoot.GlobalBasis.Y.Normalized();
         foreach (var side in new[] { "L", "R" }) {
@@ -713,11 +723,10 @@ public partial class PatientBody : Node3D {
                 var t = Mathf.Lerp(VeinSpan.X, VeinSpan.Y, i / 11f);
                 // A gentle wander across the arm, like a real vein.
                 var over = bonePose.Origin.Lerp(wrist, t) + across * Mathf.Sin(t * 9f) * 0.004f;
-                var hit = faces.IntersectRay(toSkin * (over + up * 0.15f), (toSkin.Basis * -up).Normalized());
-                if (hit.Count == 0) {
+                if (faces.IntersectRay(toSkin * (over + up * 0.15f), (toSkin.Basis * -up).Normalized()) is not { } hit) {
                     continue;
                 }
-                var onSkin = skin.GlobalTransform * hit["position"].AsVector3();
+                var onSkin = skin.GlobalTransform * hit.Position;
                 if (SiteActive && new Rect2(0, 0, 1, 1).HasPoint(WorldToUv(onSkin))) {
                     line.Clear();
                     break;
@@ -827,6 +836,7 @@ public partial class PatientBody : Node3D {
         _pallor = value;
         SkinMaterial?.SetShaderParameter(ShaderParam.Pallor, value);
         _bodyMaterials[0].SetShaderParameter(ShaderParam.Pallor, value);
+        _bodyMaterials[2].SetShaderParameter(ShaderParam.Pallor, value);
     }
 
     /// <summary>

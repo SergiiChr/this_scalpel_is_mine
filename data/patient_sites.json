@@ -1,7 +1,7 @@
 {
 	"_about": "Surgical sites in patient body space (head at +X, face up +Y, meters). depth = cavity depth, left out on limbs: a limb is muscle down to its bones, which lie half sunk in the cavity floor. fat = subcutaneous fat (meters, 0.012 when left out). back = faces down until the patient is turned. The game measures each site's skin heights on the body model when it builds the patient. anatomy: organs (uv, top = how far under the muscle the top of the organ lies, size = model scale in meters, yaw in degrees, mirror flips left-right, layer 0 on top and 1 under it, motion beat/breath follows the vitals) and bones (polylines in uv with a radius in meters; ribs are rows mirrored across the midline, running out and down from the breastbone). Bones sit right under the muscle. A limb's skeleton names the parts of the body model's skeleton under it (Thigh for SkeletonThighL/R): they are its bones, the ones X-ray films show, and its muscle reaches down to them.",
 	"abdomen": {
-		"pos": [0.0, 0.112, 0.0],
+		"pos": [0.135, 0.122, 0.0],
 		"size": [0.3, 0.3],
 		"depth": 0.14,
 		"anatomy": {
@@ -17,14 +17,14 @@
 		}
 	},
 	"chest": {
-		"pos": [0.3, 0.112, 0.0],
-		"size": [0.26, 0.3],
+		"pos": [0.37, 0.118, 0.0],
+		"size": [0.21, 0.28],
 		"depth": 0.14,
 		"anatomy": {
 			"organs": [
 				{"model": "lung", "uv": [0.52, 0.25], "top": 0.012, "size": 0.075, "color": [0.8, 0.52, 0.52], "motion": "breath"},
 				{"model": "lung", "uv": [0.52, 0.77], "top": 0.012, "size": 0.075, "mirror": true, "color": [0.8, 0.52, 0.52], "motion": "breath"},
-				{"model": "heart", "uv": [0.38, 0.57], "top": 0.012, "size": 0.052, "color": [0.55, 0.13, 0.11], "motion": "beat"},
+				{"model": "heart", "uv": [0.38, 0.57], "top": 0.012, "size": 0.045, "color": [0.55, 0.13, 0.11], "motion": "beat"},
 				{"model": "aorta", "uv": [0.55, 0.3], "top": 0.05, "size": 0.085, "color": [0.45, 0.05, 0.08], "layer": 1}
 			],
 			"ribs": {"rows": [0.95, 0.82, 0.69, 0.56, 0.43, 0.3, 0.17], "inner": 0.07, "drop": 0.14, "radius": 0.0065},
@@ -32,45 +32,46 @@
 		}
 	},
 	"back": {
-		"pos": [0.15, -0.112, 0.0],
+		"pos": [0.25, -0.078, 0.0],
 		"size": [0.3, 0.3],
 		"depth": 0.12,
 		"back": true
 	},
 	"neck": {
-		"pos": [0.5, 0.06, 0.0],
-		"size": [0.12, 0.1],
+		"pos": [0.53, 0.072, 0.0],
+		"size": [0.08, 0.09],
 		"depth": 0.05
 	},
 	"head": {
-		"pos": [0.72, 0.115, 0.0],
-		"size": [0.12, 0.14],
+		"pos": [0.747, 0.14, 0.0],
+		"size": [0.12, 0.12],
 		"depth": 0.05
 	},
 	"face": {
-		"pos": [0.64, 0.125, 0.0],
+		"pos": [0.68, 0.164, 0.0],
 		"size": [0.1, 0.1],
-		"depth": 0.05
+		"depth": 0.05,
+		"fat": 0.002
 	},
 	"shoulder": {
-		"pos": [0.38, 0.112, 0.15],
-		"size": [0.14, 0.14],
+		"pos": [0.45, 0.092, 0.13],
+		"size": [0.1, 0.12],
 		"anatomy": {"skeleton": ["UpperArm"]}
 	},
 	"forearm": {
-		"pos": [0.0, 0.03, 0.254],
+		"pos": [0.074, 0.037, 0.228],
 		"size": [0.22, 0.09],
 		"fat": 0.0,
 		"anatomy": {"skeleton": ["Forearm"]}
 	},
 	"thigh": {
-		"pos": [-0.7, 0.06, 0.109],
-		"size": [0.2, 0.11],
+		"pos": [-0.339, 0.09, 0.11],
+		"size": [0.19, 0.11],
 		"anatomy": {"skeleton": ["Thigh"]}
 	},
 	"lower_leg": {
-		"pos": [-0.95, 0.025, 0.1],
-		"size": [0.25, 0.1],
+		"pos": [-0.605, 0.044, 0.11],
+		"size": [0.27, 0.09],
 		"anatomy": {"skeleton": ["Shin"]}
 	}
 }

@@ -299,6 +299,10 @@ public static class Materials {
         _ => new Vector4(0.333f, 0.333f, 0.333f, 0),
     };
 
+    /// <summary>The red of the lips for a skin tone: a little darker than the skin and pulled toward a muted rose, so
+    /// light skin gets pink lips and dark skin brown-red ones.</summary>
+    public static Color LipTone(Color skin) => skin.Darkened(0.15f).Lerp(new Color(0.6f, 0.25f, 0.28f), 0.45f);
+
     /// <summary>Patient body skin with its own outline, both able to carve out the cavity box (see
     /// <see cref="SetCarve"/>).</summary>
     public static ShaderMaterial BodySkin(Color tone) {

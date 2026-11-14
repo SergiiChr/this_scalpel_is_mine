@@ -340,17 +340,17 @@ def _loft(name: str, rings: list[list[Vec3]], smooth: int = 2) -> bpy.types.Obje
 
 
 def skull_flap() -> None:
-    """The piece of skull a craniotomy lifts: a curved plate cut from the dome, about 7 x 6 cm and 6 mm thick,
+    """The piece of skull a craniotomy lifts: a curved plate cut from the dome, about 6 x 5 cm and 6 mm thick,
     its top at the origin, +Y out of the head. Sawn edges all round."""
-    radius = 0.09
+    radius = 0.08
     thick = 0.0065
 
     def dome(x: float, z: float) -> float:
         return float(np.sqrt(max(radius * radius - x * x - (z / 0.92) ** 2, 0.0)) - radius)
 
     rings: list[list[Vec3]] = []
-    for x in np.linspace(-0.036, 0.036, 16):
-        zs = np.linspace(-0.03, 0.03, 12)
+    for x in np.linspace(-0.03, 0.03, 16):
+        zs = np.linspace(-0.025, 0.025, 12)
         top = [(float(x), dome(float(x), float(z)), float(z)) for z in zs]
         under = [(float(x), dome(float(x), float(z)) - thick, float(z)) for z in zs[::-1]]
         rings.append(top + under)

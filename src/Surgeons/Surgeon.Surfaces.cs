@@ -216,9 +216,12 @@ public partial class Surgeon {
 
     /// <summary>The wheel over an opening: up raises forceps' tip a notch, down lowers it, from the lip down to resting on
     /// what's inside. All the way down it follows what's inside again, as it does untouched. A tip held over the lip
-    /// (something pulled out in the jaws) stays there going up.</summary>
+    /// (something pulled out in the jaws) stays there going up. A notch goes on from the depth held, not from where the
+    /// tip has got to: deep in a narrow opening the hand comes down onto the skin round it and the tip lags behind.
+    /// </summary>
     private void StepDepth(SurgeonHand hand, TipInOpening opening, bool up) {
-        var depth = Mathf.Clamp(opening.Depth + (up ? -DepthStep : DepthStep), Mathf.Min(opening.Depth, 0f), opening.Bottom);
+        var from = hand.HeldDepth ?? opening.Depth;
+        var depth = Mathf.Clamp(from + (up ? -DepthStep : DepthStep), Mathf.Min(opening.Depth, 0f), opening.Bottom);
         hand.HeldDepth = depth < opening.Bottom ? depth : null;
     }
 
@@ -460,10 +463,16 @@ public partial class Surgeon {
 
     /// <summary>How high the table, the patient, their drapes or anything else standing in the room reach under
     /// <paramref name="point"/> (world), negative infinity over nothing. Up to 15 cm over it counts as under: what an
-    /// elbow sank into. One ray, cheap enough for the arms to keep their elbows out of them every frame.</summary>
-    internal float GroundUnder(Vector3 point) =>
-        Rays.Cast(this, point + (Vector3.Up * 0.15f), point + (Vector3.Down * 2f),
-            1 | 4 | PatientBody.SurfaceLayer | Drape.DrapeLayer)?.Position.Y ?? float.NegativeInfinity;
+    /// elbow sank into. The patient and drapes lie on the table, so nothing of theirs is ever over an elbow: they're
+    /// looked for from 40 cm up, deep enough for an elbow hanging low over the far side of the chest.
+    /// Two rays, cheap enough for the arms to keep their elbows out of them every frame.</summary>
+    internal float GroundUnder(Vector3 point) {
+        const uint Patient = 4 | PatientBody.SurfaceLayer | Drape.DrapeLayer;
+        var down = point + (Vector3.Down * 2f);
+        var room = Rays.Cast(this, point + (Vector3.Up * 0.15f), down, 1 | Patient)?.Position.Y ?? float.NegativeInfinity;
+        var patient = Rays.Cast(this, point + (Vector3.Up * 0.4f), down, Patient)?.Position.Y ?? float.NegativeInfinity;
+        return Mathf.Max(room, patient);
+    }
 
     /// <summary>
     /// What's under <paramref name="point"/>. Over an opening it finds what's inside: organs and targets, or the cavity

@@ -16,7 +16,7 @@ public class DrapeTest {
     /// <summary>Least room (meters) between the skin and the sheet over it: most of Drape.Offset.</summary>
     private const float Clearance = 0.005f;
     /// <summary>Along the legs, past the hands (body x): nothing beside the body holds the sheet's sides in.</summary>
-    private static readonly float[] Legs = [-1f, -0.7f];
+    private static readonly float[] Legs = [-0.75f, -0.45f];
 
     [TestCase("appendectomy")]
     [TestCase("heart_attack")]
@@ -143,14 +143,22 @@ public class DrapeTest {
             .IsEqual(0);
 
         // The cloth is drawn one-sided: every steep face, down the sides and over the ends, faces away from the body,
-        // so the faces the camera sees are drawn.
+        // so the faces the camera sees are drawn. A face turned as much along the body as across it (falling off a flank
+        // near a corner of the opening) faces away from whichever of the sheet's side and end is nearer.
         var middle = (Drape.FromX + Drape.ToX) / 2f;
+        float HalfWidth(float x, float sign) =>
+            cloth.Where(p => Mathf.Abs(p.X - x) < Drape.Cell && p.Z * sign > 0f).Select(p => p.Z * sign).DefaultIfEmpty(0f).Max();
         var inward = 0;
         for (var n = 0; n + 2 < cloth.Length; n += 3) {
             // Godot's front faces wind clockwise.
             var normal = (cloth[n + 2] - cloth[n]).Cross(cloth[n + 1] - cloth[n]).Normalized();
             var centre = (cloth[n] + cloth[n + 1] + cloth[n + 2]) / 3f;
-            var away = Mathf.Abs(normal.Z) > Mathf.Abs(normal.X) ? normal.Z * centre.Z : normal.X * (centre.X - middle);
+            var across = Mathf.Abs(normal.Z) > Mathf.Abs(normal.X);
+            if (Mathf.Abs(Mathf.Abs(normal.Z) - Mathf.Abs(normal.X)) < 0.05f) {
+                var toSide = HalfWidth(centre.X, Mathf.Sign(centre.Z)) - Mathf.Abs(centre.Z);
+                across = toSide < Mathf.Min(centre.X - Drape.FromX, Drape.ToX - centre.X);
+            }
+            var away = across ? normal.Z * centre.Z : normal.X * (centre.X - middle);
             if (Mathf.Abs(normal.Y) < 0.3f && away < 0f) {
                 inward++;
             }
@@ -171,7 +179,7 @@ public class DrapeTest {
             driver.AddChild(shots);
             shots.Begin(driver.Surgery, "drape");
             var near = (driver.Me.GlobalPosition - root.GlobalPosition).Slide(Vector3.Up).Normalized();
-            var hips = root.ToGlobal(new Vector3(-0.15f, 0f, 0f));
+            var hips = root.ToGlobal(new Vector3(0.05f, 0f, 0f));
             await shots.CaptureOblique("near_side", "the sheet from the surgeon's side, over the belly and the hips: it "
                 + "falls smoothly off the flank and hangs straight down to the table beside the hand, no gown or skin "
                 + "showing under its side, no jagged edge", hips, near, 0.8f);

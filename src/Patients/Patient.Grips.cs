@@ -12,6 +12,10 @@ public partial class Patient {
     /// <summary>Jaws close on embedded glass with the tip over any of it that shows, or at most this far (meters)
     /// beside it: open, they straddle a blade seen edge on.</summary>
     public const float GlassReach = 0.005f;
+    /// <summary>How far (meters) a target may lie under or over the tip for jaws to close on it: down a stab or bullet
+    /// hole too narrow to open, as deep as a limb's target lies under its muscle (5 cm in a heavy patient's shoulder).
+    /// </summary>
+    public const float TargetReach = 0.06f;
 
     /// <summary>
     /// Called when a clamp tool closes at the tip. Returns what it took hold of, for <see cref="UpdateGrip"/> and
@@ -42,7 +46,7 @@ public partial class Patient {
         var candidates = skinOnly || !down ? [] : Targets
             .Where(t => !t.Extracted && !t.IsSuctionTarget && !(t.IsBone && t.Anchor > 0f))
             .Where(t => t.GrippedBy == 0 || t.GrippedBy == toolUid)
-            .Where(t => zone is SiteZone.Cavity or SiteZone.Site && Mathf.Abs(t.Depth - depthM) < 0.05f && !Covered(t) && t.InReach)
+            .Where(t => zone is SiteZone.Cavity or SiteZone.Site && Mathf.Abs(t.Depth - depthM) < TargetReach && !Covered(t) && t.InReach)
             .ToList();
         var nearest = candidates.FirstOrDefault(t => t.Embedded && OverGlass(t, Body.Site.ToLocal(at)))
             ?? candidates.Where(t => t.Uv.DistanceTo(uv) < 0.05f).MinBy(t => t.Uv.DistanceTo(uv));

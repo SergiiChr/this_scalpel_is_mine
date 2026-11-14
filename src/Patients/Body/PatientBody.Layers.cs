@@ -32,12 +32,16 @@ public partial class PatientBody {
     /// <summary>Body thinner than this under the skin (meters) can't hold the site's skin, fat and muscle: off the body.
     /// </summary>
     private const float MinThickness = 0.035f;
+    /// <summary>How far beside a skin point (meters, site x and z) the ray finding the body's far side under it runs: from
+    /// right on the body's middle, where the model's mirrored halves meet in an edge, it can slip between them and find
+    /// none.</summary>
+    private static readonly Vector3 OffSeam = new(0.00001f, 0f, 0.00001f);
 
     /// <summary>One part of the body model (skin or gown) in site space, for measuring the site against: its
     /// triangles, three corners each as the mesh numbers them, with their smooth normals.</summary>
     private sealed class ModelPart {
         public bool Gown;
-        public TriangleMesh Mesh { get; } = new();
+        public FineTriangleMesh Mesh { get; } = new();
         public List<Vector3> Faces { get; } = [];
         public List<Vector3> Normals { get; } = [];
         public List<BodyLiquidSurface.SkinWeights> SkinWeights { get; } = [];
@@ -310,7 +314,7 @@ public partial class PatientBody {
                 part.SkinWeights.Add(influences[i]);
             }
         }
-        part.Mesh.CreateFromFaces([.. part.Faces]);
+        part.Mesh.CreateFromFaces(part.Faces);
         return part;
     }
 
@@ -320,16 +324,16 @@ public partial class PatientBody {
     private static ModelHit? ModelHitAt(List<ModelPart> parts, float x, float z) {
         ModelHit? best = null;
         foreach (var part in parts) {
-            using var hit = part.Mesh.IntersectRay(new Vector3(x, RayStart, z), Vector3.Down);
-            if (hit.Count == 0 || (best is { } found && hit["position"].AsVector3().Y <= found.Position.Y)) {
+            if (part.Mesh.IntersectRay(new Vector3(x, RayStart, z), Vector3.Down) is not { } hit
+                || (best is { } found && hit.Position.Y <= found.Position.Y)) {
                 continue;
             }
-            var at = hit["position"].AsVector3();
-            var f = hit["face_index"].AsInt32() * 3;
+            var at = hit.Position;
+            var f = hit.Face * 3;
             var w = Geometry3D.GetTriangleBarycentricCoords(at, part.Faces[f], part.Faces[f + 1], part.Faces[f + 2]);
             var normal = (part.Normals[f] * w.X + part.Normals[f + 1] * w.Y + part.Normals[f + 2] * w.Z).Normalized();
             if (normal.Y > 0f) {
-                best = new ModelHit(at, normal, hit["normal"].AsVector3(), part);
+                best = new ModelHit(at, normal, hit.Normal, part);
             }
         }
         return best;
@@ -363,8 +367,8 @@ public partial class PatientBody {
             }
             _heights[n] = hit.Position.Y;
             // The body's thickness under this point: where the same ray comes out of the part again.
-            using var exit = hit.Part.Mesh.IntersectRay(hit.Position + Vector3.Down * 0.001f, Vector3.Down);
-            thickness[n] = exit.Count > 0 ? hit.Position.Y - exit["position"].AsVector3().Y : 0f;
+            var exit = hit.Part.Mesh.IntersectRay(hit.Position + OffSeam + (Vector3.Down * 0.001f), Vector3.Down);
+            thickness[n] = exit is { } under ? hit.Position.Y - under.Position.Y : 0f;
         }
         // Where nothing was met (past the body's outline, over a hole) the site goes on from the points around it, so
         // heights between points stay smooth up to the edge of the body.

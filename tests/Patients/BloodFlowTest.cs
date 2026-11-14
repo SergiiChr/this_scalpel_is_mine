@@ -140,7 +140,7 @@ public class BloodFlowTest {
                 return Task.CompletedTask;
             });
             await session.CaptureOblique("settled_contact", "blood on the upright back runs down onto the mattress and spreads there, no hard edge where they meet",
-                new Vector3(0.18f, 0.86f, -0.11f), Vector3.Forward, 0.7f);
+                new Vector3(0.28f, 0.86f, -0.1f), Vector3.Forward, 0.7f);
         }
         if (scenario == "hand_stitch") {
             await driver.Unbudgeted(() => {
@@ -369,7 +369,10 @@ public class BloodFlowTest {
             }
         }
         AssertInt(shared).OverrideFailureMessage($"the body's film keeps off the skin the site's film carries ({shared} of {onSite.Count} points over the site lie on it, over uv {sharedAt}; {handsOver.Count} of {SurfaceBlood.Size * SurfaceBlood.Size} cells hand over)").IsEqual(0);
-        var orphaned = boundary.Count(c => onSite.Select(p => p.DistanceTo(c)).DefaultIfEmpty(float.PositiveInfinity).Min() > slack);
+        // Points round a steep flank face down and aren't counted, so the nearest counted one can lie up to half a cell
+        // further out.
+        var flankSlack = slack + (cell.Length() * 0.5f);
+        var orphaned = boundary.Count(c => onSite.Select(p => p.DistanceTo(c)).DefaultIfEmpty(float.PositiveInfinity).Min() > flankSlack);
         AssertInt(orphaned).OverrideFailureMessage($"the body's film takes over right where the site's film hands over ({orphaned} of {boundary.Count} flank cells beside the site's film have no body film point)").IsEqual(0);
     }
 
