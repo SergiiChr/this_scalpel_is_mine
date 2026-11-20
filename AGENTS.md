@@ -16,7 +16,7 @@ Keep repository-wide instructions here and specialized guidance in the linked do
 - [review-key-frames](.agents/skills/review-key-frames/SKILL.md): visual review and baseline acceptance. Read and follow
   it whenever reviewing key frames or updating their baseline.
 
-Shared workflows live in `.agents/skills/<name>/SKILL.md`; `.claude/skills` links there for Claude Code.
+Shared workflows live in `.agents/skills/<name>/SKILL.md`; `.claude/skills` is a symlink to that folder for Claude Code.
 Read their Markdown instructions with ordinary file tools; if a workflow calls for a capability such as opening an
 image, use the equivalent tool available to your agent.
 Add new workflows here with a description of when to use them so discovery does not depend on an agent's loader.

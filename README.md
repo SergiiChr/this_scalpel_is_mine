@@ -143,7 +143,8 @@ tests/           GdUnit4 suites by feature, and in tests/Support the test helper
 tools/assetgen/  Model, sound and manual art generator (Python)
 tools/blender/   Organic and rigged models built with Blender (Python)
 tools/keyframes.py  Key frame review report (./build.py screenshot_review)
-.agents/skills/ Shared agent workflows, indexed in AGENTS.md
+.agents/skills/  Shared agent workflows, indexed in AGENTS.md
+.claude/skills   Symlink to .agents/skills for Claude Code
 ```
 
 ## Tests
