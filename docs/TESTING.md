@@ -141,7 +141,7 @@ Every user-visible change still needs a visual test: a seam says where a test go
   updates always require a passing run; an accepted baseline never makes a failing run ready for handoff.
 - Broken cases are skipped and take no key frames. A passing full regression drops their old baseline frames.
 - Baseline acceptance, update commands and the failed-regression procedure:
-  [review-key-frames](../.claude/skills/review-key-frames/SKILL.md).
+  [review-key-frames](../.agents/skills/review-key-frames/SKILL.md).
 - Key frames are taken and compared in local runs only, never on CI. They are always rendered in a virtual display by
   the software renderer (`xvfb-run`), without film grain, so machines save the same or nearly the same pixels for the
   same scene. The review errs toward listing a key frame: a faint change over the whole view counts, so a sheet may show

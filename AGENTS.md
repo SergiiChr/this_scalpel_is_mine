@@ -13,10 +13,10 @@ Keep repository-wide instructions here and specialized guidance in the linked do
 - [docs/RELEASE.md](docs/RELEASE.md): branches, development, PRs and releases.
 - [docs/TESTING.md](docs/TESTING.md): test strategy, seams, policy and visual verification.
 - [docs/PERFORMANCE.md](docs/PERFORMANCE.md): frame budgets and performance policy. Follow them in every change.
-- [review-key-frames](.claude/skills/review-key-frames/SKILL.md): visual review and baseline acceptance. Read and follow
+- [review-key-frames](.agents/skills/review-key-frames/SKILL.md): visual review and baseline acceptance. Read and follow
   it whenever reviewing key frames or updating their baseline.
 
-Shared workflows live in `.claude/skills/<name>/SKILL.md`.
+Shared workflows live in `.agents/skills/<name>/SKILL.md`; `.claude/skills` links there for Claude Code.
 Read their Markdown instructions with ordinary file tools; if a workflow calls for a capability such as opening an
 image, use the equivalent tool available to your agent.
 Add new workflows here with a description of when to use them so discovery does not depend on an agent's loader.
@@ -83,7 +83,7 @@ It takes no key frames.
 - `./build.py screenshot_review`: the same full regression, then `build/review/report.md` with a sheet for each key
   frame that is missing, changed or new against the baseline committed in `tests/KeyFrames`. It fails while any key
   frame differs from the baseline, and when there is none. Follow
-  [review-key-frames](.claude/skills/review-key-frames/SKILL.md). `--focused` reviews the last focused run with key
+  [review-key-frames](.agents/skills/review-key-frames/SKILL.md). `--focused` reviews the last focused run with key
   frames instead, only in the folders it took; changed and new frames are expected; missing frames or a missing baseline
   fail that comparison. The test run must pass separately. `generate_baseline --focused` adds or replaces its reviewed
   key frames in the baseline.
