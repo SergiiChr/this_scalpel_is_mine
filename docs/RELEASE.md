@@ -29,7 +29,7 @@ The key frames a release review accepts reach `main` with the next release.
 4. Run `./build.py test` (smoke) or `--all` (full regression) locally only for a wide core change that can break
    unrelated modules. Otherwise CI covers them.
 5. For a user-visible change, review the key frames of its suites with
-   [review-key-frames](../.claude/skills/review-key-frames/SKILL.md) and commit the accepted ones with the change.
+   [review-key-frames](../.agents/skills/review-key-frames/SKILL.md) and commit the accepted ones with the change.
    Changed and new ones are the evidence for the handoff. Removed key frames go at release.
 6. Run the `self-review` skill, then rerun the checks above for what it changed.
 7. Push the branch and give the owner a PR title, a description (see [PR description](../AGENTS.md#pr-description)) and
